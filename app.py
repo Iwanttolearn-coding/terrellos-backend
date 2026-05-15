@@ -1,9 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
+import os
 
-app = FastAPI()
+app = FastAPI(title="TerrellOS Backend")
+
+# =========================
+# CORS
+# =========================
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,48 +18,77 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =========================
+# MODELS
+# =========================
+
+class ChatMessage(BaseModel):
+    role: Optional[str] = "user"
+    content: Optional[str] = ""
+
 class ChatRequest(BaseModel):
-    prompt: Optional[str] = ""
-    message: Optional[str] = ""
-    messages: Optional[List[Dict[str, Any]]] = []
+    message: Optional[str] = None
+    prompt: Optional[str] = None
+    messages: Optional[List[ChatMessage]] = []
+
+# =========================
+# ROOT
+# =========================
 
 @app.get("/")
 async def root():
     return {
         "status": "TerrellOS backend live",
         "environment": "production",
-        "success": True
+        "version": "4.0.0-prod"
     }
+
+# =========================
+# HEALTH
+# =========================
 
 @app.get("/health")
 async def health():
     return {
-        "status": "healthy",
-        "backend": "online",
-        "environment": "production",
-        "success": True
+        "status": "healthy"
     }
 
-@app.get("/ping")
-async def ping():
-    return {
-        "message": "pong",
-        "success": True
-    }
+# =========================
+# CHAT ENDPOINT
+# =========================
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    user_input = req.prompt or req.message
 
-    if not user_input and req.messages:
-        last_message = req.messages[-1]
-        user_input = last_message.get("content", "")
+    user_message = ""
 
-    if not user_input:
-        user_input = "No prompt received"
+    # PRIORITY 1
+    if req.message:
+        user_message = req.message
+
+    # PRIORITY 2
+    elif req.prompt:
+        user_message = req.prompt
+
+    # PRIORITY 3
+    elif req.messages and len(req.messages) > 0:
+        user_message = req.messages[-1].content
+
+    else:
+        user_message = "empty request"
 
     return {
-        "reply": f"TerrellOS AI received: {user_input}",
-        "status": "success",
-        "success": True
+        "success": True,
+        "response": f"TerrellOS AI received: {user_message}",
+        "message": user_message,
+        "environment": "production",
+        "version": "4.0.0-prod"
     }
+
+# =========================
+# STARTUP
+# =========================
+
+@app.on_event("startup")
+async def startup_event():
+    print("🔥 TerrellOS backend starting...")
