@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 
 app = FastAPI()
 
-# CORS for Base44 frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,32 +13,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request model
 class ChatRequest(BaseModel):
-    message: str
+    prompt: Optional[str] = ""
+    message: Optional[str] = ""
+    messages: Optional[List[Dict[str, Any]]] = []
 
-# Root route
 @app.get("/")
 async def root():
     return {
-        "status": "TerrellOS backend live"
+        "status": "TerrellOS backend live",
+        "environment": "production",
+        "success": True
     }
 
-# Health route
 @app.get("/health")
 async def health():
     return {
-        "status": "healthy"
+        "status": "healthy",
+        "backend": "online",
+        "environment": "production",
+        "success": True
     }
 
-# AI chat route
+@app.get("/ping")
+async def ping():
+    return {
+        "message": "pong",
+        "success": True
+    }
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    user_input = req.prompt or req.message
 
-    user_message = req.message
+    if not user_input and req.messages:
+        last_message = req.messages[-1]
+        user_input = last_message.get("content", "")
+
+    if not user_input:
+        user_input = "No prompt received"
 
     return {
-        "reply": f"TerrellOS AI received: {user_message}",
-        "status": "success"
+        "reply": f"TerrellOS AI received: {user_input}",
+        "status": "success",
+        "success": True
     }
-
