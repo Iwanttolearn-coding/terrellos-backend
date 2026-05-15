@@ -2,13 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+from openai import OpenAI
 import os
 
 app = FastAPI(title="TerrellOS Backend")
-
-# =========================
-# CORS
-# =========================
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,9 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
-# MODELS
-# =========================
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 class ChatMessage(BaseModel):
     role: Optional[str] = "user"
@@ -31,64 +26,40 @@ class ChatRequest(BaseModel):
     prompt: Optional[str] = None
     messages: Optional[List[ChatMessage]] = []
 
-# =========================
-# ROOT
-# =========================
-
 @app.get("/")
 async def root():
-    return {
-        "status": "TerrellOS backend live",
-        "environment": "production",
-        "version": "4.0.0-prod"
-    }
-
-# =========================
-# HEALTH
-# =========================
+    return {"status": "TerrellOS backend live", "environment": "production"}
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy"
-    }
-
-# =========================
-# CHAT ENDPOINT
-# =========================
+    return {"status": "healthy", "backend": "online"}
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    user_message = req.message or req.prompt
 
-    user_message = ""
-
-    # PRIORITY 1
-    if req.message:
-        user_message = req.message
-
-    # PRIORITY 2
-    elif req.prompt:
-        user_message = req.prompt
-
-    # PRIORITY 3
-    elif req.messages and len(req.messages) > 0:
+    if not user_message and req.messages:
         user_message = req.messages[-1].content
 
-    else:
-        user_message = "empty request"
+    if not user_message:
+        user_message = "Hello"
+
+    res = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are TerrellOS AI Builder, a production coding and app-building assistant."
+            },
+            {
+                "role": "user",
+                "content": user_message
+            }
+        ]
+    )
 
     return {
         "success": True,
-        "response": f"TerrellOS AI received: {user_message}",
-        "message": user_message,
-        "environment": "production",
-        "version": "4.0.0-prod"
+        "reply": res.choices[0].message.content,
+        "status": "success"
     }
-
-# =========================
-# STARTUP
-# =========================
-
-@app.on_event("startup")
-async def startup_event():
-    print("🔥 TerrellOS backend starting...")
