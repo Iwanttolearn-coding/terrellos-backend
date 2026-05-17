@@ -15,6 +15,29 @@ from typing import List, Optional, Dict, Any
 from openai import OpenAI
 import os, uuid, json
 from datetime import datetime, timezone
+# ── Startup diagnostics (prints to Render log on boot) ────────────────────────
+import sys as _sys
+print("=" * 60, flush=True)
+print(f"[BOOT] Python {_sys.version}", flush=True)
+print(f"[BOOT] TerrellOS app.py loading...", flush=True)
+try:
+    import fastapi; print(f"[BOOT] fastapi {fastapi.__version__} OK", flush=True)
+except Exception as _e: print(f"[BOOT] fastapi MISSING: {_e}", flush=True)
+try:
+    import uvicorn; print(f"[BOOT] uvicorn {uvicorn.__version__} OK", flush=True)
+except Exception as _e: print(f"[BOOT] uvicorn MISSING: {_e}", flush=True)
+try:
+    import openai; print(f"[BOOT] openai {openai.__version__} OK", flush=True)
+except Exception as _e: print(f"[BOOT] openai MISSING: {_e}", flush=True)
+try:
+    import pydantic; print(f"[BOOT] pydantic {pydantic.__version__} OK", flush=True)
+except Exception as _e: print(f"[BOOT] pydantic MISSING: {_e}", flush=True)
+_openai_env = os.environ.get("OPENAI_API_KEY", "")
+print(f"[BOOT] OPENAI_API_KEY: {'SET (' + str(len(_openai_env)) + ' chars)' if _openai_env else 'NOT SET'}", flush=True)
+print(f"[BOOT] PORT: {os.environ.get('PORT', 'NOT SET')}", flush=True)
+print("=" * 60, flush=True)
+
+
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(title="TerrellOS Backend", version="7.0.0-prod")
@@ -27,7 +50,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+# Defensive OpenAI client — lazy init, won't crash if key is missing at startup
+_openai_key = os.environ.get("OPENAI_API_KEY", "")
+try:
+    client = OpenAI(api_key=_openai_key) if _openai_key else None
+except Exception as _e:
+    print(f"[WARN] OpenAI client init failed: {_e}")
+    client = None
 
 # ── In-memory stores ──────────────────────────────────────────────────────────
 SESSIONS_DB:  Dict[str, Dict] = {}
@@ -214,6 +243,8 @@ async def chat(req: ChatRequest):
 
     messages = [{"role": "system", "content": system}] + history_msgs + [{"role": "user", "content": msg}]
 
+    if not client:
+        raise HTTPException(500, "OpenAI API key not configured — set OPENAI_API_KEY in Render environment variables.")
     try:
         res = client.chat.completions.create(model="gpt-4o-mini", messages=messages, max_tokens=1200, temperature=0.75)
         return {"success": True, "reply": res.choices[0].message.content.strip(), "status": "success"}
@@ -546,6 +577,8 @@ async def companion_respond(req: CompanionRespondReq):
     if req.message:
         messages.append({"role": "user", "content": req.message})
 
+    if not client:
+        raise HTTPException(500, "OpenAI API key not configured — set OPENAI_API_KEY in Render environment variables.")
     try:
         res = client.chat.completions.create(
             model="gpt-4o-mini", messages=messages, max_tokens=600, temperature=0.85
