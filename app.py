@@ -9,7 +9,81 @@ import uuid
 from datetime import datetime, timezone
 
 app = FastAPI(title="TerrellOS Backend", version="7.1.0-voice")
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ELEVENLABS VOICE ROUTE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+import os
+import base64
+import httpx
+from fastapi import HTTPException
+
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv(
+    "ELEVENLABS_VOICE_ID",
+    "EXAVITQu4vr4xnSDxMaL"
+)
+
+@app.post("/v1/voice/speak")
+async def voice_speak(payload: dict):
+
+    text = payload.get("text", "").strip()
+
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing text"
+        )
+
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="ELEVENLABS_API_KEY missing"
+        )
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+
+    headers = {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+    }
+
+    body = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.45,
+            "similarity_boost": 0.85,
+            "style": 0.35,
+            "use_speaker_boost": True
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            url,
+            headers=headers,
+            json=body
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=response.text
+        )
+
+    audio_base64 = base64.b64encode(
+        response.content
+    ).decode("utf-8")
+
+    return {
+        "success": True,
+        "provider": "elevenlabs",
+        "voice_id": ELEVENLABS_VOICE_ID,
+        "audio_mime_type": "audio/mpeg",
+        "audio_base64": audio_base64
+    }
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
