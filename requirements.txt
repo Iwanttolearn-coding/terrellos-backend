@@ -1,9 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 gunicorn
-openai
 python-dotenv
-python-multipart
-httpx
+openai
 pydantic
-starlette
+httpx
+python-multipart
