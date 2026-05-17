@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from openai import OpenAI
+import httpx
 import os
 import uuid
 from datetime import datetime, timezone
 
-app = FastAPI(title="TerrellOS Backend", version="7.0.0-prod")
+app = FastAPI(title="TerrellOS Backend", version="7.1.0-voice")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,6 +19,38 @@ app.add_middleware(
 )
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+# ── ElevenLabs TTS ────────────────────────────────────────────────────────────
+ELEVEN_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVEN_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel
+ELEVEN_MODEL    = os.environ.get("ELEVENLABS_MODEL",    "eleven_turbo_v2")
+ELEVEN_BASE     = "https://api.elevenlabs.io/v1"
+
+async def elevenlabs_tts(text: str, voice_id: str | None = None) -> bytes | None:
+    """Call ElevenLabs TTS. Returns raw MP3 bytes or None if unconfigured/failed."""
+    if not ELEVEN_API_KEY:
+        return None
+    vid = voice_id or ELEVEN_VOICE_ID
+    async with httpx.AsyncClient(timeout=20.0) as hc:
+        r = await hc.post(
+            f"{ELEVEN_BASE}/text-to-speech/{vid}",
+            headers={"xi-api-key": ELEVEN_API_KEY, "Accept": "audio/mpeg"},
+            json={
+                "text": text,
+                "model_id": ELEVEN_MODEL,
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            },
+        )
+    if r.status_code == 200:
+        return r.content
+    print(f"[ElevenLabs] TTS error {r.status_code}: {r.text[:200]}", flush=True)
+    return None
+
+def audio_to_data_url(audio_bytes: bytes) -> str:
+    """Base64-encode MP3 bytes as an inline data URL for direct <audio> playback."""
+    import base64
+    return "data:audio/mpeg;base64," + base64.b64encode(audio_bytes).decode()
+
 
 SESSIONS_DB: Dict[str, Dict[str, Any]] = {}
 PROFILES_DB: Dict[str, Dict[str, Any]] = {}
@@ -169,7 +202,7 @@ class CompanionVoiceReq(BaseModel):
 async def root():
     return {
         "status": "TerrellOS backend live",
-        "version": "7.0.0-prod",
+        "version": "7.1.0-voice",
         "environment": "production",
         "platform": "Heavenly Eternal Echo",
     }
@@ -180,8 +213,10 @@ async def health():
     return {
         "status": "healthy",
         "backend": "online",
-        "version": "7.0.0-prod",
+        "version": "7.1.0-voice",
         "openai_configured": bool(os.environ.get("OPENAI_API_KEY")),
+        "elevenlabs_configured": bool(ELEVEN_API_KEY),
+        "voice_provider": "elevenlabs" if ELEVEN_API_KEY else "unconfigured",
         "memory": {
             "profiles": len(PROFILES_DB),
             "sessions": len(SESSIONS_DB),
@@ -699,21 +734,71 @@ async def companion_respond(req: CompanionRespondReq):
 
 @app.post("/v1/companion/voice")
 async def companion_voice(req: CompanionVoiceReq):
+    text = (req.message or "").strip()
+    if not text:
+        raise HTTPException(400, "message is required")
+    if not ELEVEN_API_KEY:
+        return {
+            "success": False,
+            "audio_data_url": None,
+            "voice_synthesis_status": "unconfigured",
+            "message": "Set ELEVENLABS_API_KEY in Render → Environment to activate voice.",
+        }
+    audio = await elevenlabs_tts(text, voice_id=req.voice_id)
+    if audio:
+        return {
+            "success": True,
+            "audio_data_url": audio_to_data_url(audio),
+            "voice_synthesis_status": "complete",
+            "provider": "elevenlabs",
+            "voice_id": req.voice_id or ELEVEN_VOICE_ID,
+            "bytes": len(audio),
+        }
     return {
-        "success": True,
-        "audio_url": None,
-        "voice_synthesis_status": "preparation_active",
-        "message": "Voice synthesis in preparation. Configure voice provider to activate.",
+        "success": False,
+        "audio_data_url": None,
+        "voice_synthesis_status": "error",
+        "message": "ElevenLabs TTS failed — check API key and voice ID in Render env vars.",
     }
 
 
 @app.post("/v1/companion/voice/auto")
 async def companion_voice_auto(req: CompanionVoiceReq):
+    """One-shot: generate AI text reply + synthesize to voice. Returns both."""
+    text_input = (req.message or "").strip()
+    if not text_input:
+        raise HTTPException(400, "message is required")
+
+    # Step 1: AI text response
+    text_reply = text_input
+    if client:
+        try:
+            r = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": (
+                        "You are Eternal Echo — a warm, reflective AI companion that helps "
+                        "people preserve and revisit their most meaningful memories. "
+                        "Respond with warmth and depth in 1-3 sentences."
+                    )},
+                    {"role": "user", "content": text_input},
+                ],
+                max_tokens=200, temperature=0.8,
+            )
+            text_reply = r.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[voice/auto] OpenAI error: {e}", flush=True)
+
+    # Step 2: Voice synthesis
+    audio       = await elevenlabs_tts(text_reply, voice_id=req.voice_id) if ELEVEN_API_KEY else None
+    data_url    = audio_to_data_url(audio) if audio else None
+
     return {
         "success": True,
-        "audio_url": None,
-        "voice_synthesis_status": "preparation_active",
-        "message": "Auto voice synthesis in preparation.",
+        "text_reply": text_reply,
+        "audio_data_url": data_url,
+        "voice_synthesis_status": "complete" if data_url else ("unconfigured" if not ELEVEN_API_KEY else "error"),
+        "provider": "elevenlabs" if data_url else None,
     }
 
 
