@@ -11,21 +11,39 @@ import httpx
 
 app = FastAPI(
     title="TerrellOS Backend",
-    version="7.1.0-prod",
+    version="8.0.0-full",
     description="TerrellOS / Heavenly Eternal Echo production AI backend"
 )
 
+# ── CORS — env-driven allowlist ────────────────────────────────────────────
+_CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
+_CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
+    "https://heavenlyeternalecho.com",
+    "https://www.heavenlyeternalecho.com",
+    "https://terrellos.com",
+    "https://www.terrellos.com",
+    "https://app.base44.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ALLOWED,
+    allow_origin_regex=r"https://.*\.vercel\.app",   # catch all Vercel preview URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL",    "eleven_multilingual_v2")
+WHISPER_MODEL       = os.getenv("WHISPER_MODEL",       "whisper-1")
+IMAGE_MODEL         = os.getenv("IMAGE_MODEL",         "dall-e-3")
+FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://heavenlyeternalecho.com")
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
@@ -99,6 +117,41 @@ class VoiceSpeakRequest(BaseModel):
 class AdminGrantRequest(BaseModel):
     email: str
 
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    style:   Optional[str] = "vivid"       # vivid | natural
+    quality: Optional[str] = "standard"    # standard | hd
+    size:    Optional[str] = "1024x1024"   # 1024x1024 | 1792x1024 | 1024x1792
+    n:       Optional[int] = 1
+    user_id: Optional[str] = None
+
+class WhisperTranscribeRequest(BaseModel):
+    audio_base64:  Optional[str] = None
+    audio_url:     Optional[str] = None
+    language:      Optional[str] = None
+    session_id:    Optional[str] = None
+
+
+
+# ── Status ────────────────────────────────────────────────────────────────────
+@app.get("/status")
+async def status():
+    """Simple status check — returns active service capabilities."""
+    return {
+        "service":    "TerrellOS / Heavenly Eternal Echo",
+        "version":    "8.0.0-full",
+        "status":     "online",
+        "capabilities": {
+            "chat":       bool(OPENAI_API_KEY),
+            "voice":      bool(ELEVENLABS_API_KEY),
+            "images":     bool(OPENAI_API_KEY),
+            "transcribe": bool(OPENAI_API_KEY),
+            "memory":     True,
+            "uploads":    True,
+        },
+        "time": datetime.now(timezone.utc).isoformat()
+    }
+
 
 @app.get("/")
 async def root():
@@ -106,7 +159,7 @@ async def root():
         "success": True,
         "service": "TerrellOS Backend",
         "status": "online",
-        "version": "7.1.0-prod",
+        "version": "8.0.0-full",
         "docs": "/docs",
         "health": "/health",
         "time": datetime.now(timezone.utc).isoformat()
@@ -118,11 +171,16 @@ async def health():
     return {
         "success": True,
         "status": "healthy",
+        "version": "8.0.0-full",
         "render": "online",
         "fastapi": "online",
-        "openai_configured": bool(OPENAI_API_KEY),
+        "openai_configured":    bool(OPENAI_API_KEY),
         "elevenlabs_configured": bool(ELEVENLABS_API_KEY),
-        "multipart_uploads": "ready",
+        "image_generation":     "ready" if OPENAI_API_KEY else "needs_api_key",
+        "voice_synthesis":      "ready" if ELEVENLABS_API_KEY else "needs_api_key",
+        "whisper_transcription": "ready" if OPENAI_API_KEY else "needs_api_key",
+        "multipart_uploads":    "ready",
+        "cors_origins":         len(_CORS_ALLOWED),
         "time": datetime.now(timezone.utc).isoformat()
     }
 
@@ -313,15 +371,42 @@ async def memory_profile(profile_id: str):
 
 @app.post("/v1/memory/transcribe")
 async def memory_transcribe(file: UploadFile = File(...)):
-    content = await file.read()
+    """
+    Transcribe audio using OpenAI Whisper.
+    Accepts: webm, mp3, mp4, wav, m4a, ogg, flac (max ~25MB).
+    """
+    audio_bytes = await file.read()
 
-    return {
-        "success": True,
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size": len(content),
-        "transcript": "Transcription placeholder ready. Connect Whisper/OpenAI audio transcription next."
-    }
+    if not openai_client:
+        return {
+            "success": False,
+            "transcript": None,
+            "note": "OPENAI_API_KEY not configured — Whisper transcription unavailable.",
+            "filename": file.filename,
+            "size": len(audio_bytes),
+        }
+
+    import io
+    try:
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = file.filename or "audio.webm"
+        result = openai_client.audio.transcriptions.create(
+            model=WHISPER_MODEL,
+            file=audio_file,
+            response_format="verbose_json",
+        )
+        return {
+            "success": True,
+            "transcript": result.text,
+            "language": getattr(result, "language", None),
+            "duration": getattr(result, "duration", None),
+            "provider": "openai_whisper",
+            "model": WHISPER_MODEL,
+            "filename": file.filename,
+            "size": len(audio_bytes),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Whisper transcription failed: {str(e)}")
 
 
 @app.post("/v1/memory/consent")
@@ -427,6 +512,74 @@ async def upload(file: UploadFile = File(...)):
         "size": len(content),
         "message": "File uploaded successfully"
     }
+
+
+
+# ── Image Generation ──────────────────────────────────────────────────────────
+@app.post("/v1/images/generate")
+async def images_generate(payload: ImageGenerateRequest):
+    """
+    Generate images via DALL-E 3.
+    Powers: memorial scenes, heavenly avatars, AI vacations, memory reconstruction.
+    """
+    prompt = payload.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+
+    if not openai_client:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+
+    # Safety-enhanced prompt for spiritual/memorial context
+    enhanced_prompt = (
+        f"{prompt} — rendered in a warm, sacred, cinematic style with "
+        "soft heavenly light and emotional depth."
+    )
+
+    try:
+        response = openai_client.images.generate(
+            model=IMAGE_MODEL,
+            prompt=enhanced_prompt,
+            size=payload.size,
+            quality=payload.quality,
+            style=payload.style,
+            n=payload.n,
+        )
+        images = [
+            {"url": img.url, "revised_prompt": img.revised_prompt}
+            for img in response.data
+        ]
+        return {
+            "success": True,
+            "images": images,
+            "model": IMAGE_MODEL,
+            "prompt": prompt,
+            "enhanced_prompt": enhanced_prompt,
+            "count": len(images),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+
+@app.post("/v1/images/memorial")
+async def images_memorial(payload: ImageGenerateRequest):
+    """
+    Specialized memorial / legacy scene generator.
+    Creates warm, dignified, spiritual imagery for memory preservation.
+    """
+    base_prompt = payload.prompt.strip() or "A peaceful eternal scene"
+    memorial_prompt = (
+        f"A serene, spiritually comforting scene: {base_prompt}. "
+        "Soft warm golden light, heavenly clouds, gentle atmosphere, "
+        "dignified and emotionally moving, photorealistic with painterly quality."
+    )
+    memorial_payload = ImageGenerateRequest(
+        prompt=memorial_prompt,
+        style="natural",
+        quality=payload.quality,
+        size=payload.size,
+        user_id=payload.user_id,
+    )
+    return await images_generate(memorial_payload)
 
 
 @app.post("/v1/companion/respond")
@@ -602,6 +755,9 @@ async def admin_stats():
             "/v1/voice/speak",
             "/v1/companion/voice",
             "/v1/companion/voice/auto",
+            "/v1/images/generate",
+            "/v1/images/memorial",
+            "/status",
             "/v1/admin/check-grant",
             "/v1/admin/stats"
         ],
