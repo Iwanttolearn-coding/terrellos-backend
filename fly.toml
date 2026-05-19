@@ -1,9 +1,12 @@
 app = "terrellos-backend"
 primary_region = "dfw"
 
+[build]
+  dockerfile = "Dockerfile"
+
 [env]
+  FRONTEND_URL = "https://app.tm-dezigns.org"
   PORT = "8080"
-  FRONTEND_URL = "https://heavenlyeternalecho.com"
 
 [http_service]
   internal_port = 8080
@@ -23,3 +26,8 @@ primary_region = "dfw"
     grace_period = "30s"
     method = "get"
     path = "/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
