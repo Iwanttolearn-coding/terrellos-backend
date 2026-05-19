@@ -1234,3 +1234,256 @@ For each week include:
 Make it progressive — each week builds on the previous."""
     return _theology(SYS, prompt, int(payload.weeks) * 300 + 500)
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ANCIENT TEXTS ENGINE — Dead Sea Scrolls, Enoch, Apocrypha, Pseudepigrapha
+# EASY BIBLE ENGINE — Simple language, beginner, children, prison ministry
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── CANONICAL STATUS LABELS (never mix without these) ───────────────────────
+CANONICAL_STATUS = {
+    "canonical":     "This text IS part of the accepted biblical canon.",
+    "apocrypha":     "APOCRYPHA — Accepted by Catholic/Orthodox traditions; NOT in Protestant or Jewish Bibles.",
+    "pseudepigrapha":"PSEUDEPIGRAPHA — Ancient Jewish/Christian writing; NOT accepted as Scripture by any major tradition.",
+    "historical":    "HISTORICAL DOCUMENT — Valuable for scholarship; NOT Scripture.",
+    "early-church":  "EARLY CHURCH WRITING — Important historically; NOT Scripture or equal to the Bible.",
+    "non-canonical": "NON-CANONICAL — Not part of any accepted Bible canon.",
+}
+
+ANCIENT_TEXT_DISCLAIMER = (
+    "IMPORTANT DISCLAIMER: This content is for scholarly and historical research. "
+    "It clearly distinguishes between canonical Scripture, Apocrypha, historical writings, "
+    "and theological commentary. Never treat non-canonical texts as equal to the Bible "
+    "without explicit labeling."
+)
+
+class AncientTextRequest(BaseModel):
+    text_name:    str
+    text_category: Optional[str] = "historical"
+    study_type:   Optional[str] = "overview"   # overview | biblical | pastoral | apologetics
+    tradition:    Optional[str] = "evangelical-scholarly"
+    user_id:      Optional[str] = "pastor"
+
+class EasyBibleRequest(BaseModel):
+    passage:      str
+    mode:         Optional[str] = "easy"       # easy | beginner | children | prison | devotion | sermon
+    action:       Optional[str] = "easy"       # easy | deep | historical | language | denominations | sermon | prayer
+    language:     Optional[str] = "english"    # english | spanish
+    user_id:      Optional[str] = "pastor"
+
+
+@app.post("/v1/ancient-texts/study")
+async def ancient_text_study(payload: AncientTextRequest):
+    """
+    AI study for ancient texts — always includes canonical status disclaimer.
+    """
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    status_label = CANONICAL_STATUS.get(payload.text_category, CANONICAL_STATUS["historical"])
+
+    study_prompts = {
+        "overview": (
+            f"Give a comprehensive scholarly overview of '{payload.text_name}'. "
+            "Include: origin, date, language, discovery/history, contents summary, "
+            "theological themes, historical significance, relation to biblical canon, "
+            "and what scholars agree/disagree on. "
+            "Begin with the canonical status of this text. Be academic but accessible. "
+            f"Status: {status_label}"
+        ),
+        "biblical": (
+            f"Explain all connections between '{payload.text_name}' and the canonical Bible. "
+            "Where does it quote or reference Scripture? Where does the NT cite it? "
+            "What biblical concepts does it illuminate? Where does it DIFFER from Scripture? "
+            "ALWAYS clearly distinguish what IS Scripture vs historical/non-canonical writing. "
+            f"Status: {status_label}"
+        ),
+        "pastoral": (
+            f"How can a pastor responsibly use '{payload.text_name}' in ministry? "
+            "What historical and theological insights does it offer without compromising biblical authority? "
+            "Include: sermon applications, discipleship uses, apologetics value, "
+            "and clear warnings about what is NOT scriptural from this text. "
+            f"Status: {status_label}"
+        ),
+        "apologetics": (
+            f"From a Christian apologetics perspective, evaluate '{payload.text_name}'. "
+            "How do skeptics misuse it? How do Christians respond? "
+            "What does it prove or not prove about the Bible? "
+            "Be academically honest and theologically grounded. "
+            f"Status: {status_label}"
+        ),
+    }
+
+    SYS = (
+        "You are a biblical scholar specializing in Second Temple Judaism, Dead Sea Scrolls, "
+        "early Christianity, and ancient manuscripts. You always clearly label canonical status "
+        "of every text — never mixing non-canonical writings with Scripture without explicit labeling. "
+        f"DISCLAIMER: {ANCIENT_TEXT_DISCLAIMER}"
+    )
+
+    prompt = study_prompts.get(payload.study_type, study_prompts["overview"])
+    content = _gpt(SYS, prompt, max_tokens=2000)
+
+    return {
+        "success":         True,
+        "text_name":       payload.text_name,
+        "study_type":      payload.study_type,
+        "canonical_status": status_label,
+        "disclaimer":      ANCIENT_TEXT_DISCLAIMER,
+        "content":         content,
+        "model":           "gpt-4o",
+        "generatedAt":     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/v1/ancient-texts/qumran")
+async def qumran_study(payload: TheologyRequest):
+    """Qumran community & Dead Sea Scrolls background study."""
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+    SYS = (
+        "You are an expert in Dead Sea Scrolls scholarship, Second Temple Judaism, and Qumran history. "
+        "Always clarify what is historical fact, scholarly consensus, or ongoing debate."
+    )
+    prompt = (
+        f"Write a comprehensive study on: {payload.topic or 'The Qumran Community and Dead Sea Scrolls'}\n\n"
+        "Include:\n"
+        "1. Who were the Essenes / Qumran community?\n"
+        "2. Historical timeline (discovery, dating, key figures)\n"
+        "3. Their theology and beliefs\n"
+        "4. How the scrolls confirm biblical text accuracy\n"
+        "5. Unique documents found (non-biblical)\n"
+        "6. Comparison with early Christianity\n"
+        "7. Pastoral and apologetics value today\n"
+        "8. Study questions (5)\n"
+        "Always label what is Scripture vs. historical document."
+    )
+    result = _gpt(SYS, prompt, max_tokens=2000)
+    return {
+        "success": True,
+        "content": result,
+        "disclaimer": ANCIENT_TEXT_DISCLAIMER,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/v1/easy-bible/explain")
+async def easy_bible_explain(payload: EasyBibleRequest):
+    """
+    Easy OBM Bible Mode — simple language Bible explanations.
+    Supports: easy, beginner, children, prison, devotion, sermon modes.
+    Supports English and Spanish.
+    """
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    lang = "Spanish" if payload.language == "spanish" else "English"
+
+    audience_map = {
+        "easy":     "a general adult audience using simple, clear, everyday language — no seminary jargon",
+        "beginner": "someone who has never read the Bible before — explain every concept, no assumed knowledge",
+        "children": "children ages 6–12 — use a fun story approach, simple words, relatable examples, and excitement",
+        "prison":   "someone in prison ministry — emphasize grace, redemption, forgiveness, and new life in Christ. Be warm, hopeful, and direct.",
+        "devotion": "a personal devotional reader — make it warm, personal, encouraging, and spiritually nourishing",
+        "sermon":   "a pastor preparing a simple, accessible sermon — give a clean outline with practical application",
+    }
+
+    action_map = {
+        "easy": (
+            f"Explain {payload.passage} in {lang} for {audience_map.get(payload.mode,'a general audience')}.\n"
+            "Include:\n1. What it says in simple words\n2. What it meant when written\n"
+            "3. What it means for life today\n4. One key takeaway\n5. An encouraging closing thought.\n"
+            "Keep it warm, accessible, and spiritually alive."
+        ),
+        "deep": (
+            f"Give a deep theological study of {payload.passage} in {lang}.\n"
+            "Include: Greek/Hebrew word meanings, context in chapter and book, "
+            "major theological themes, cross-references, and key commentary insights.\n"
+            f"Audience: {audience_map.get(payload.mode,'general')}."
+        ),
+        "historical": (
+            f"Explain the historical and cultural background of {payload.passage} in {lang}.\n"
+            "Who wrote it? When? To whom? What was happening historically? "
+            "How does context change how we read it today?\n"
+            f"Audience: {audience_map.get(payload.mode,'general')}."
+        ),
+        "language": (
+            f"Break down the original language of {payload.passage} in {lang}.\n"
+            "Show key Hebrew or Greek words, root meanings, translation nuances, "
+            "and how English versions differ.\n"
+            f"Make this accessible for {audience_map.get(payload.mode,'a general audience')}."
+        ),
+        "denominations": (
+            f"Explain how 4 different Christian denominations interpret {payload.passage} in {lang}.\n"
+            "Include: Baptist, Catholic, Pentecostal, and Reformed. "
+            "Note agreements, disagreements, and why.\n"
+            f"Write for {audience_map.get(payload.mode,'a general audience')}."
+        ),
+        "sermon": (
+            f"Create a simple sermon outline from {payload.passage} in {lang} "
+            f"for {audience_map.get(payload.mode,'general congregation')}.\n"
+            "Include: title, 3 main points with scripture, illustration for each, "
+            "practical application, and closing call to action."
+        ),
+        "prayer": (
+            f"Write a heartfelt prayer based on {payload.passage} in {lang} "
+            f"for {audience_map.get(payload.mode,'a general audience')}.\n"
+            "Include: praise, reflection on the verse, personal petition, and surrender. 150–200 words."
+        ),
+    }
+
+    SYS = (
+        f"You are a compassionate Bible teacher who excels at making Scripture accessible in {lang}. "
+        "You adapt your language to your audience — from children to seminary students. "
+        "You are always biblically accurate, warm, and encouraging."
+    )
+
+    prompt = action_map.get(payload.action, action_map["easy"])
+    content = _gpt(SYS, prompt, max_tokens=1500)
+
+    return {
+        "success":    True,
+        "passage":    payload.passage,
+        "action":     payload.action,
+        "mode":       payload.mode,
+        "language":   lang,
+        "content":    content,
+        "model":      "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/v1/easy-bible/verse-breakdown")
+async def verse_breakdown(payload: EasyBibleRequest):
+    """Verse-by-verse breakdown for an entire passage."""
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    lang = "Spanish" if payload.language == "spanish" else "English"
+    mode = payload.mode or "easy"
+
+    SYS = (
+        f"You are a Bible teacher explaining Scripture verse-by-verse in {lang}. "
+        "You make every verse crystal clear, meaningful, and applicable."
+    )
+    prompt = (
+        f"Do a complete verse-by-verse breakdown of {payload.passage} in {lang}.\n"
+        "For EACH verse:\n"
+        "VERSE: [verse reference and text]\n"
+        "MEANING: [what this verse means in simple terms]\n"
+        "APPLICATION: [one practical takeaway]\n\n"
+        f"Write for someone who is {mode} — adjust language accordingly.\n"
+        "After all verses, add a 'BIG PICTURE' section summarizing the whole passage."
+    )
+    content = _gpt(SYS, prompt, max_tokens=2000)
+
+    return {
+        "success":    True,
+        "passage":    payload.passage,
+        "mode":       mode,
+        "language":   lang,
+        "content":    content,
+        "model":      "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
