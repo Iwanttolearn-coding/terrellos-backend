@@ -5,7 +5,8 @@ primary_region = "dfw"
   dockerfile = "Dockerfile"
 
 [env]
-  FRONTEND_URL = "https://heavenlyeternalecho.com"
+  FRONTEND_URL = "https://app.tm-dezigns.org"
+  PORT = "8080"
 
 [http_service]
   internal_port = 8080
