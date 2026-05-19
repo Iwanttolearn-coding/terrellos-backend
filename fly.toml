@@ -1,7 +1,3 @@
-# fly.toml — TerrellOS FastAPI Backend
-# Deploy: fly launch --name terrellos-backend --region dfw --yes
-# Redeploy: fly deploy
-
 app = "terrellos-backend"
 primary_region = "dfw"
 
@@ -12,22 +8,28 @@ primary_region = "dfw"
   PORT = "8080"
   FRONTEND_URL = "https://heavenlyeternalecho.com"
 
-[http_service]
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+  protocol = "tcp"
 
-  [http_service.concurrency]
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
     type = "connections"
     hard_limit = 100
     soft_limit = 80
 
-  [http_service.checks]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "10s"
+    grace_period = "30s"
     method = "get"
     path = "/health"
 
