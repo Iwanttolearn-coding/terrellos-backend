@@ -1,39 +1,25 @@
 app = "terrellos-backend"
 primary_region = "dfw"
 
-[build]
-  dockerfile = "Dockerfile"
-
 [env]
   PORT = "8080"
   FRONTEND_URL = "https://heavenlyeternalecho.com"
 
-[[services]]
+[http_service]
   internal_port = 8080
-  protocol = "tcp"
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
 
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-    force_https = true
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-  [services.concurrency]
+  [http_service.concurrency]
     type = "connections"
     hard_limit = 100
     soft_limit = 80
 
-  [[services.http_checks]]
+  [[http_service.checks]]
     interval = "15s"
     timeout = "10s"
     grace_period = "30s"
     method = "get"
     path = "/health"
-
-[[vm]]
-  memory = "512mb"
-  cpu_kind = "shared"
-  cpus = 1
