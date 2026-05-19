@@ -20,6 +20,10 @@ _CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
     "https://heavenlyeternalecho.com",
     "https://www.heavenlyeternalecho.com",
+    "https://pastoraiconnect.com",
+    "https://www.pastoraiconnect.com",
+    "https://pastor-ai-connect.com",
+    "https://www.pastor-ai-connect.com",
     "https://terrellos.com",
     "https://www.terrellos.com",
     "https://app.base44.com",
@@ -1035,3 +1039,198 @@ async def analyze_sermon(payload: SermonAnalyzeRequest):
         "status": "ready",
         "processedAt": datetime.now(timezone.utc).isoformat()
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THEOLOGY ENGINE — Pastor AI Connect
+# Discipleship · Denominations · Church History · Martyrs · Apologetics
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TheologyRequest(BaseModel):
+    topic:        Optional[str] = ""
+    scripture:    Optional[str] = ""
+    denomination: Optional[str] = "Non-Denominational"
+    depth:        Optional[str] = "intermediate"
+    level:        Optional[str] = "new-believer"
+    era:          Optional[str] = ""
+    name:         Optional[str] = ""
+    question:     Optional[str] = ""
+    tradition:    Optional[str] = "evangelical"
+    audience:     Optional[str] = "adults"
+    weeks:        Optional[int] = 4
+    context:      Optional[str] = ""
+    type:         Optional[str] = "pastoral"
+    user_id:      Optional[str] = "pastor"
+
+
+def _theology(system_role: str, prompt: str, tokens: int = 2000) -> dict:
+    """Shared theology AI call."""
+    result = _gpt(system_role, prompt, max_tokens=tokens)
+    return {"success": True, "content": result, "model": "gpt-4o", "generatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+@app.post("/v1/theology/bible-study")
+async def bible_study(payload: TheologyRequest):
+    SYS = "You are a seminary-trained biblical scholar. Produce thorough, verse-by-verse, historically grounded Bible study material."
+    prompt = f"""Create a comprehensive Bible study on {payload.scripture or payload.topic}.
+Denomination perspective: {payload.denomination}. Depth: {payload.depth}.
+Include:
+1. PASSAGE OVERVIEW (context, authorship, date)
+2. VERSE BY VERSE analysis (each key verse explained)
+3. THEOLOGICAL THEMES (3-5 major themes)
+4. CROSS-REFERENCES (related passages)
+5. HISTORICAL/CULTURAL CONTEXT
+6. APPLICATION (5 practical life applications)
+7. REFLECTION QUESTIONS (5 questions)
+8. PRAYER
+Be thorough and academically rigorous."""
+    return _theology(SYS, prompt, 2500)
+
+
+@app.post("/v1/theology/discipleship")
+async def discipleship(payload: TheologyRequest):
+    SYS = "You are an experienced discipleship pastor. Create structured, progressive discipleship curriculum."
+    prompt = f"""Create a complete discipleship lesson on: {payload.topic}
+Level: {payload.level}. Audience: {payload.audience}.
+Include:
+1. LESSON TITLE & OBJECTIVE
+2. OPENING SCRIPTURE
+3. INTRODUCTION (why this matters)
+4. CORE TEACHING (3-4 sections)
+5. KEY SCRIPTURES (at least 5)
+6. PRACTICAL EXERCISES
+7. REFLECTION QUESTIONS (5)
+8. MEMORY VERSE
+9. PRAYER
+10. NEXT STEPS
+Be pastoral, warm, and spiritually deep."""
+    return _theology(SYS, prompt, 2000)
+
+
+@app.post("/v1/theology/denomination")
+async def denomination_study(payload: TheologyRequest):
+    SYS = "You are a church historian and comparative theology professor. Give accurate, fair, respectful analysis."
+    prompt = f"""Write a comprehensive theological profile of: {payload.denomination}
+Topic focus: {payload.topic or 'complete overview'}
+Include:
+1. HISTORY (founding, key events, growth)
+2. FOUNDERS & KEY FIGURES
+3. CORE BELIEFS (statement of faith summary)
+4. SALVATION DOCTRINE (how one is saved)
+5. BAPTISM DOCTRINE
+6. COMMUNION / LORD'S SUPPER
+7. HOLY SPIRIT DOCTRINE
+8. WORSHIP STYLE
+9. CHURCH GOVERNMENT
+10. END-TIMES VIEW (eschatology)
+11. MAJOR THEOLOGIANS
+12. KEY DIFFERENCES from other traditions
+13. RECOMMENDED SCRIPTURES
+14. STUDY QUESTIONS (5)
+Be academically accurate and fair to the tradition."""
+    return _theology(SYS, prompt, 2500)
+
+
+@app.post("/v1/theology/church-history")
+async def church_history(payload: TheologyRequest):
+    SYS = "You are a church historian with expertise across all eras of Christian history."
+    prompt = f"""Write a thorough study on this church history topic: {payload.topic}
+Era: {payload.era or 'all relevant eras'}
+Include:
+1. HISTORICAL OVERVIEW
+2. KEY FIGURES INVOLVED
+3. TIMELINE OF EVENTS
+4. THEOLOGICAL SIGNIFICANCE
+5. IMPACT ON THE CHURCH TODAY
+6. CONTROVERSIES & RESOLUTIONS
+7. SCRIPTURE CONNECTIONS
+8. LESSONS FOR THE MODERN CHURCH
+9. STUDY QUESTIONS (5)
+Be historically accurate and theologically rich."""
+    return _theology(SYS, prompt, 2000)
+
+
+@app.post("/v1/theology/martyr")
+async def martyr_profile(payload: TheologyRequest):
+    SYS = "You are a church historian specializing in Christian martyrology. Write with reverence and historical accuracy."
+    prompt = f"""Write a complete martyr profile for: {payload.name}
+Include:
+1. BIOGRAPHY (life, calling, ministry)
+2. HISTORICAL SETTING
+3. HOW THEY SERVED GOD
+4. PERSECUTION HISTORY
+5. MARTYRDOM — what happened, when, how
+6. SPIRITUAL LESSONS from their life
+7. SCRIPTURE CONNECTIONS
+8. DENOMINATIONAL / TRADITION context
+9. SERMON APPLICATION
+10. STUDY QUESTIONS (5)
+Write with historical accuracy and pastoral warmth."""
+    return _theology(SYS, prompt, 2000)
+
+
+@app.post("/v1/theology/christian-hero")
+async def christian_hero(payload: TheologyRequest):
+    SYS = "You are a church historian and theologian. Write thorough, accurate, inspiring profiles of great Christian leaders."
+    prompt = f"""Write a comprehensive profile of Christian hero/leader: {payload.name}
+Include:
+1. BIOGRAPHY & CALLING
+2. HISTORICAL IMPACT
+3. KEY TEACHINGS & DOCTRINES
+4. MAJOR WORKS / BOOKS / SERMONS
+5. THEOLOGICAL TRADITION
+6. CONTROVERSIES (if any — balanced)
+7. TIMELINE
+8. HOW THEIR LIFE APPLIES TODAY
+9. STUDY QUESTIONS (5)
+10. RECOMMENDED READING
+Be historically accurate and inspirational."""
+    return _theology(SYS, prompt, 2000)
+
+
+@app.post("/v1/theology/apologetics")
+async def apologetics(payload: TheologyRequest):
+    SYS = "You are a Christian apologist trained in classical, evidential, and presuppositional apologetics."
+    prompt = f"""Provide a thorough apologetics answer to this question: {payload.question}
+Tradition: {payload.tradition}
+Include:
+1. THE QUESTION restated clearly
+2. BRIEF ANSWER (summary)
+3. FULL DEFENSE (3-4 paragraphs, theological and philosophical)
+4. SCRIPTURE SUPPORT
+5. HISTORICAL EVIDENCE if applicable
+6. COMMON OBJECTIONS & RESPONSES
+7. RECOMMENDED READING
+8. CLOSING THOUGHT
+Be intellectually rigorous and spiritually grounded."""
+    return _theology(SYS, prompt, 2000)
+
+
+@app.post("/v1/theology/prayer")
+async def generate_prayer_route(payload: TheologyRequest):
+    SYS = "You are a pastoral prayer writer. Write deep, sincere, scripturally grounded prayers."
+    prompt = f"""Write a {payload.type} prayer for: {payload.context}
+The prayer should:
+- Be 200-300 words
+- Reference relevant scripture
+- Be warm, sincere, and theologically sound
+- Include praise, confession, intercession, and surrender
+Write the prayer itself — not a description of it."""
+    return _theology(SYS, prompt, 500)
+
+
+@app.post("/v1/theology/lesson-plan")
+async def lesson_plan(payload: TheologyRequest):
+    SYS = "You are a curriculum designer for Christian education. Build structured, progressive lesson plans."
+    prompt = f"""Create a {payload.weeks}-week lesson plan on: {payload.topic}
+Audience: {payload.audience}
+For each week include:
+- Week title
+- Learning objective
+- Main scripture
+- Key points (3)
+- Activity or discussion
+- Homework / reflection
+Make it progressive — each week builds on the previous."""
+    return _theology(SYS, prompt, int(payload.weeks) * 300 + 500)
+
