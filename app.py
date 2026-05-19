@@ -1063,643 +1063,609 @@ class TheologyRequest(BaseModel):
     user_id:      Optional[str] = "pastor"
 
 
-def _theology(system_role: str, prompt: str, tokens: int = 2000) -> dict:
-    """Shared theology AI call."""
-    result = _gpt(system_role, prompt, max_tokens=tokens)
-    return {"success": True, "content": result, "model": "gpt-4o", "generatedAt": datetime.now(timezone.utc).isoformat()}
+# ═══════════════════════════════════════════════════════════════════════════
+# THEOLOGY ENGINE v2 — upgraded prompt engineering + output quality rules
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Output Quality Standards (injected into every prompt) ──────────────────
+OUTPUT_QUALITY_RULES = """
+OUTPUT QUALITY RULES — MUST FOLLOW:
+✅ Theological depth — go beyond surface-level explanation
+✅ Historical context — ground everything in actual history
+✅ Scripture integration — cite specific verses with book/chapter/verse
+✅ Denominational awareness — note where traditions differ
+✅ Practical application — always connect to real Christian life
+✅ Emotionally intelligent teaching — pastoral warmth, not academic coldness
+✅ Source references — cite church fathers, theologians, or historians where relevant
+✅ Structured formatting — clear headers, numbered lists, no run-on paragraphs
+❌ No filler phrases ("In conclusion," "As we can see," "It is important to note")
+❌ No generic AI fluff or repetitive church clichés
+❌ No tiny underdeveloped paragraphs — every section must have substance
+❌ No vague application — be specific and actionable
+"""
+
+# ── Source citation template ──────────────────────────────────────────────
+SOURCE_CITATION_FOOTER = """
+
+---
+SOURCES & REFERENCES:
+Cite at least 3–5 relevant sources at the end, such as:
+- Bible passages (book, chapter:verse)
+- Church fathers (e.g., Augustine, Confessions, IV.12)
+- Theologians (e.g., Grudem, Systematic Theology, ch. 14)
+- Historical councils (e.g., Council of Nicaea, 325 AD)
+- Denominational confessions (e.g., Westminster Confession, ch. IX)
+Format: [Author/Source] — [Title/Document] — [Date/Edition]
+"""
+
+# ── Upgraded _theology helper ─────────────────────────────────────────────
+def _theology(system_role: str, prompt: str, tokens: int = 2500) -> dict:
+    """Shared theology AI call — v2 with quality enforcement."""
+    enriched_system = system_role + "\n\n" + OUTPUT_QUALITY_RULES
+    result = _gpt(enriched_system, prompt, max_tokens=tokens, temperature=0.7)
+    return {
+        "success":     True,
+        "content":     result,
+        "model":       "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
 
 
+# ── BIBLE STUDY ───────────────────────────────────────────────────────────
 @app.post("/v1/theology/bible-study")
 async def bible_study(payload: TheologyRequest):
-    SYS = "You are a seminary-trained biblical scholar. Produce thorough, verse-by-verse, historically grounded Bible study material."
-    prompt = f"""Create a comprehensive Bible study on {payload.scripture or payload.topic}.
-Denomination perspective: {payload.denomination}. Depth: {payload.depth}.
-Include:
-1. PASSAGE OVERVIEW (context, authorship, date)
-2. VERSE BY VERSE analysis (each key verse explained)
-3. THEOLOGICAL THEMES (3-5 major themes)
-4. CROSS-REFERENCES (related passages)
-5. HISTORICAL/CULTURAL CONTEXT
-6. APPLICATION (5 practical life applications)
-7. REFLECTION QUESTIONS (5 questions)
-8. PRAYER
-Be thorough and academically rigorous."""
-    return _theology(SYS, prompt, 2500)
+    SYS = (
+        "You are a seminary-trained biblical scholar with 30 years of pastoral experience. "
+        "You combine rigorous academic exegesis with pastoral warmth and practical application. "
+        "You are fluent in original languages (Hebrew/Greek) and cite them when relevant. "
+        "You produce structured, in-depth Bible studies that could be used in a seminary classroom "
+        "or a local church small group — never shallow, always useful."
+    )
+    prompt = f"""Create a comprehensive, seminary-level Bible study on: {payload.scripture or payload.topic}
+
+Denomination perspective: {payload.denomination or 'non-denominational evangelical'}
+Study depth: {payload.depth or 'intermediate'}
+Target audience: {payload.audience or 'adult believers'}
+
+REQUIRED SECTIONS:
+
+## 1. PASSAGE OVERVIEW
+- Full text of the passage (or key verses)
+- Book, author, date written, original audience
+- Where this fits in the biblical narrative (redemptive history)
+- The literary genre and how it affects interpretation
+
+## 2. HISTORICAL & CULTURAL CONTEXT
+- The political, religious, and social world of the original audience
+- Key cultural practices referenced in the text
+- How understanding the context changes interpretation
+
+## 3. ORIGINAL LANGUAGE INSIGHTS
+- 2–3 key words in Hebrew (OT) or Greek (NT) with meaning
+- How translation choices affect understanding
+- Any nuances lost in English translations
+
+## 4. VERSE-BY-VERSE ANALYSIS
+- Work through each key verse or section carefully
+- Explain what it meant to the original audience
+- Note interpretive differences between traditions (where they exist)
+
+## 5. MAJOR THEOLOGICAL THEMES
+- 3–5 significant theological truths in this passage
+- How each theme connects to the broader biblical storyline
+- Cross-references (at least 5 related passages)
+
+## 6. DENOMINATIONAL PERSPECTIVES
+- How do Baptist, Catholic, Orthodox, Pentecostal, Reformed traditions read this passage differently?
+- Note major interpretive differences without dismissing any tradition
+
+## 7. PRACTICAL APPLICATION
+- 5 specific, actionable applications for believers today
+- One application per life area: personal devotion, family, church, work, witness
+
+## 8. DISCUSSION QUESTIONS (for small group / Sunday school)
+- 5 thoughtful questions that spark real conversation
+- Mix of observation, interpretation, and application questions
+
+## 9. PRAYER
+- A pastoral prayer drawing from the themes of the passage
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 3000)
 
 
+# ── DISCIPLESHIP ──────────────────────────────────────────────────────────
 @app.post("/v1/theology/discipleship")
 async def discipleship(payload: TheologyRequest):
-    SYS = "You are an experienced discipleship pastor. Create structured, progressive discipleship curriculum."
-    prompt = f"""Create a complete discipleship lesson on: {payload.topic}
-Level: {payload.level}. Audience: {payload.audience}.
-Include:
-1. LESSON TITLE & OBJECTIVE
-2. OPENING SCRIPTURE
-3. INTRODUCTION (why this matters)
-4. CORE TEACHING (3-4 sections)
-5. KEY SCRIPTURES (at least 5)
-6. PRACTICAL EXERCISES
-7. REFLECTION QUESTIONS (5)
-8. MEMORY VERSE
-9. PRAYER
-10. NEXT STEPS
-Be pastoral, warm, and spiritually deep."""
-    return _theology(SYS, prompt, 2000)
+    SYS = (
+        "You are a master discipleship pastor who has trained thousands of Christians "
+        "across 30+ years of ministry. You understand that discipleship is not just "
+        "information transfer — it is life-on-life spiritual formation. You create "
+        "curriculum that is theologically sound, progressively structured, and "
+        "practically transformative. You write for real people in real churches."
+    )
+    prompt = f"""Create a complete, well-structured discipleship lesson on: {payload.topic}
+
+Maturity level: {payload.level or 'growing believer'}
+Target audience: {payload.audience or 'adults in a local church'}
+Denomination context: {payload.denomination or 'non-denominational'}
+
+REQUIRED SECTIONS:
+
+## LESSON TITLE
+Create a memorable, compelling title.
+
+## LEARNING OBJECTIVES
+3 clear outcomes — what will the student know, believe, and do differently?
+
+## OPENING HOOK
+Start with a real-life story, question, or scenario that creates immediate relevance.
+
+## FOUNDATIONAL SCRIPTURE
+The primary passage with verse text. Explain why this text is the anchor for this lesson.
+
+## CORE TEACHING (3–4 sections)
+Each section should have:
+- A clear sub-heading
+- Biblical grounding (with scripture references)
+- Theological explanation
+- Illustration or story
+- Connection to daily life
+
+## KEY SCRIPTURES (minimum 6)
+Cited in full with brief commentary on each.
+
+## PRACTICAL EXERCISES
+3 specific, actionable exercises the student can do this week.
+Make them concrete, not vague.
+
+## REFLECTION QUESTIONS (5)
+Move from information → conviction → action.
+
+## ACCOUNTABILITY QUESTIONS
+3 questions a discipleship partner can ask next week to check follow-through.
+
+## MEMORY VERSE
+One verse from the lesson. Include KJV and NIV versions.
+
+## CLOSING PRAYER
+A pastoral prayer for transformation, not just information.
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 2800)
 
 
+# ── DENOMINATION STUDY ────────────────────────────────────────────────────
 @app.post("/v1/theology/denomination")
 async def denomination_study(payload: TheologyRequest):
-    SYS = "You are a church historian and comparative theology professor. Give accurate, fair, respectful analysis."
+    SYS = (
+        "You are a comparative theology professor and church historian with expertise "
+        "in all major Christian traditions — Catholic, Orthodox, Protestant, Pentecostal, "
+        "and everything in between. You give accurate, respectful, and fair analysis of "
+        "each tradition, noting what they believe and why — not dismissing any tradition. "
+        "You help Christians understand their own tradition deeply and engage others charitably."
+    )
     prompt = f"""Write a comprehensive theological profile of: {payload.denomination}
-Topic focus: {payload.topic or 'complete overview'}
-Include:
-1. HISTORY (founding, key events, growth)
-2. FOUNDERS & KEY FIGURES
-3. CORE BELIEFS (statement of faith summary)
-4. SALVATION DOCTRINE (how one is saved)
-5. BAPTISM DOCTRINE
-6. COMMUNION / LORD'S SUPPER
-7. HOLY SPIRIT DOCTRINE
-8. WORSHIP STYLE
-9. CHURCH GOVERNMENT
-10. END-TIMES VIEW (eschatology)
-11. MAJOR THEOLOGIANS
-12. KEY DIFFERENCES from other traditions
-13. RECOMMENDED SCRIPTURES
-14. STUDY QUESTIONS (5)
-Be academically accurate and fair to the tradition."""
+Topic focus: {payload.topic or 'complete theological overview'}
+
+REQUIRED SECTIONS:
+
+## HISTORICAL ORIGIN
+- When, where, and why this denomination was founded
+- The theological controversy or spiritual movement that gave birth to it
+- Key founders with brief biographies
+- Major historical milestones (councils, splits, revivals, mergers)
+
+## STATEMENT OF FAITH — CORE BELIEFS
+Cover each: God/Trinity, Scripture, humanity/sin, salvation, Christ, Holy Spirit, church, sacraments, eschatology
+For each doctrine: what they believe AND the scriptural basis
+
+## SALVATION DOCTRINE (critical — be precise)
+- How does one become saved?
+- Role of faith, works, grace, baptism, sacraments
+- Assurance of salvation — can you lose it?
+- Comparison to other major traditions (1–2 sentences each)
+
+## BAPTISM DOCTRINE
+- Mode (immersion, sprinkling, pouring)
+- Timing (infant, believer's)
+- Theological meaning (symbol, sacrament, regeneration?)
+
+## LORD'S SUPPER / COMMUNION / EUCHARIST
+- Frequency
+- Theological meaning (memorial, real presence, consubstantiation, transubstantiation?)
+- Who may participate
+
+## HOLY SPIRIT DOCTRINE
+- Role of the Spirit
+- Spiritual gifts — cessationist or continuationist?
+- Speaking in tongues — required, expected, or not emphasized?
+
+## WORSHIP STYLE
+- Liturgical vs. contemporary
+- Order of service
+- Music tradition
+- Prayer forms
+
+## CHURCH GOVERNMENT
+- Episcopal, presbyterian, or congregational?
+- Role of pastors, bishops, elders, deacons
+- Accountability structures
+
+## ESCHATOLOGY (END TIMES)
+- Pre-mil, post-mil, or a-mil?
+- Rapture views
+- Tribulation views
+
+## MAJOR THEOLOGIANS & CONFESSIONS
+- Key theologians with their most important works
+- Official confessions/catechisms (Westminster, Heidelberg, Augsburg, etc.)
+
+## KEY DISTINCTIVES vs OTHER TRADITIONS
+- What makes this tradition unique?
+- Major theological agreements and disagreements with Baptists, Catholics, Pentecostals, Orthodox
+
+## SCRIPTURE FOUNDATION
+- 8–10 key scriptures that ground this tradition's core beliefs
+
+## FOR FURTHER STUDY
+- 3–5 recommended books, confessions, or resources for deeper study
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 3200)
+
+
+# ── CHURCH HISTORY ────────────────────────────────────────────────────────
+@app.post("/v1/theology/church-history")
+async def church_history(payload: TheologyRequest):
+    SYS = (
+        "You are a church historian with a PhD and 25 years of teaching. You write with "
+        "the precision of a scholar and the passion of a pastor. You connect historical "
+        "events to the present — showing students that church history is not dry dates "
+        "but the living story of God working through broken people. You do not sanitize "
+        "the church's failures, nor do you fail to celebrate her triumphs."
+    )
+    prompt = f"""Write a thorough, engaging church history study on: {payload.topic}
+Era focus: {payload.era or 'all relevant eras'}
+Denomination lens: {payload.denomination or 'pan-denominational'}
+
+REQUIRED SECTIONS:
+
+## OVERVIEW
+- What is this topic/event/period and why does it matter?
+- The "so what" — why every Christian should know this
+
+## HISTORICAL TIMELINE
+- Key dates and events in chronological order
+- Each entry: date, event, significance (2–3 sentences)
+
+## KEY FIGURES
+- For each major person: biography, theological contribution, lasting impact
+- Include both heroes AND those who made mistakes (honest history)
+
+## THEOLOGICAL SIGNIFICANCE
+- What theological questions were being debated?
+- What was at stake for the church?
+- How was the issue resolved (or not)?
+
+## PRIMARY SOURCES
+- Direct quotes from original documents, letters, council decisions, or writings
+- Explanation of what each quote reveals
+
+## IMPACT ON THE CHURCH TODAY
+- How does this historical event/period still affect Christianity?
+- What denominations or practices emerged from it?
+- What lessons have (or haven't) been learned?
+
+## CRITICAL ANALYSIS
+- What did the church get right?
+- What did the church get wrong?
+- What would you have done differently?
+
+## LESSONS FOR THE MODERN CHURCH
+- 5 specific lessons for 21st-century Christians and churches
+- How can these lessons change how we do church today?
+
+## DISCUSSION QUESTIONS (5)
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 2800)
+
+
+# ── MARTYR BIOGRAPHICAL ───────────────────────────────────────────────────
+@app.post("/v1/theology/martyr")
+async def martyr_study(payload: TheologyRequest):
+    SYS = (
+        "You are a Christian historian and pastoral theologian specializing in martyrology "
+        "and the theology of suffering. You write with historical precision, spiritual depth, "
+        "and pastoral tenderness. You help the church remember those who died for Christ "
+        "so that believers today are inspired, challenged, and equipped to face their own trials."
+    )
+    prompt = f"""Create a comprehensive martyr study for: {payload.topic or payload.figure_name or 'Christian martyrs'}
+Era/Region focus: {payload.era or 'all eras'}
+Denomination: {payload.denomination or 'cross-denominational'}
+
+## BIOGRAPHICAL PROFILE
+- Full name, dates, birthplace, family background
+- Pre-conversion life (what were they before Christ?)
+- Conversion story — how and when did they come to faith?
+- Ministry calling and work
+
+## THE PERSECUTION
+- Who persecuted them, why, and in what political/religious context
+- The specific events leading to their arrest, trial, or death
+- Their response to persecution — how did their faith show?
+- Any opportunity they had to recant and why they refused
+
+## FINAL HOURS & DEATH
+- Last known words, prayers, or writings
+- Manner of death
+- Eyewitness accounts (if historical records exist)
+- How those present were affected
+
+## THEOLOGICAL SIGNIFICANCE
+- What did their death reveal about Christian faith?
+- How does their story reflect the life of Christ?
+- Key scriptures they embodied (cite specific verses)
+- What their martyrdom revealed about the nature of the Gospel
+
+## LEGACY & IMPACT
+- How the church responded to their death
+- Churches, institutions, or movements named after them
+- How their story has been used in Christian history
+- Their relevance to persecuted Christians today
+
+## SERMON APPLICATION
+- 3 powerful sermon points drawn from their life
+- Each point: title, scripture, illustration from their life, application
+
+## PRAYER OF REMEMBRANCE
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 2800)
+
+
+# ── CHRISTIAN HERO ────────────────────────────────────────────────────────
+@app.post("/v1/theology/christian-hero")
+async def christian_hero(payload: TheologyRequest):
+    SYS = (
+        "You are a Christian biographer and historian who tells the stories of Christian "
+        "heroes — missionaries, reformers, scholars, revivalists, and ordinary believers "
+        "who changed the world through extraordinary faith. You write with historical accuracy, "
+        "spiritual insight, and the ability to make history come alive and speak to the present."
+    )
+    prompt = f"""Write a comprehensive profile of Christian hero: {payload.topic or payload.figure_name}
+Ministry type: {payload.ministry_type or 'general'}
+Era: {payload.era or 'relevant era'}
+
+## WHO THEY WERE
+- Full biography: birth, family, education, early life
+- The world they lived in — historical and cultural context
+- Their personality and human flaws (not hagiography — real people)
+
+## THE CALLING
+- How God called them into ministry
+- What obstacles they faced at the start
+- The vision God gave them
+
+## THE WORK
+- Their specific ministry — what exactly did they do?
+- Key achievements, books written, churches planted, lives changed
+- Their methods and why they were effective
+
+## FAITH IN ACTION
+- Key moments where their faith was tested
+- Specific prayers God answered in their ministry
+- Miracles or breakthroughs (if documented)
+- Failures and how they recovered
+
+## THEOLOGICAL LEGACY
+- Their core theological beliefs
+- How their theology shaped their ministry
+- Lasting theological contributions
+- Key writings or sermons
+
+## IMPACT ON CHRISTIANITY
+- How did they change the church?
+- What movements, institutions, or traditions trace back to them?
+- How their work continues today
+
+## WHAT WE CAN LEARN
+- 5 specific lessons for Christians today
+- How their example challenges comfortable faith
+- One thing they did that every believer could imitate
+
+## REFLECTION & DISCUSSION (5 questions)
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 2800)
+
+
+# ── APOLOGETICS ───────────────────────────────────────────────────────────
+@app.post("/v1/theology/apologetics")
+async def apologetics(payload: TheologyRequest):
+    SYS = (
+        "You are a Christian apologist with expertise in philosophy, historical evidence, "
+        "and theology. You combine the rigor of C.S. Lewis, the scholarship of N.T. Wright, "
+        "and the accessibility of Lee Strobel. You help Christians give confident, intellectually "
+        "honest answers to hard questions — without dismissing doubts or oversimplifying objections. "
+        "You are always respectful of questioners while being clear about Christian truth claims."
+    )
+    prompt = f"""Write a comprehensive apologetics response to: {payload.topic}
+Target audience: {payload.audience or 'skeptical seekers and questioning Christians'}
+Denomination context: {payload.denomination or 'broadly evangelical'}
+
+## THE OBJECTION / QUESTION
+- State the objection or question clearly and fairly
+- The strongest version of the objection (steelman it)
+- Why this is a serious question that deserves a real answer
+
+## HISTORICAL CHRISTIAN RESPONSES
+- How have Christians historically responded to this challenge?
+- Key apologists who addressed this (with their arguments)
+- Church councils or theologians who spoke to this issue
+
+## PHILOSOPHICAL RESPONSE
+- The logical structure of the Christian answer
+- Where the objection's premises fail or lead to contradictions
+- The philosophical case for the Christian position
+
+## BIBLICAL RESPONSE
+- Key scriptures that address this question
+- How the biblical authors themselves wrestled with this
+- The biblical narrative's answer (not just proof-texting)
+
+## HISTORICAL & EVIDENTIAL RESPONSE
+- Historical evidence relevant to this question
+- Archaeological, manuscript, or scientific evidence
+- How the historical case strengthens the Christian answer
+
+## DENOMINATIONAL PERSPECTIVES
+- Do different Christian traditions answer this differently?
+- Note where there is broad agreement across traditions
+- Note where there are genuine theological tensions
+
+## HONEST ACKNOWLEDGMENTS
+- What remains genuinely difficult or uncertain?
+- What has Christianity gotten wrong in the past on related issues?
+- How intellectual honesty strengthens rather than weakens the faith
+
+## PRACTICAL EVANGELISM APPLICATION
+- How to use this in a conversation with a skeptic
+- What NOT to say
+- Questions to ask that open the conversation
+
+## RESOURCES FOR DEEPER STUDY
+- 3–5 specific books, articles, or scholars on this topic
+
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 3000)
+
+
+# ── PRAYER GENERATION ─────────────────────────────────────────────────────
+@app.post("/v1/theology/prayer")
+async def prayer_generation(payload: TheologyRequest):
+    SYS = (
+        "You are a pastoral prayer writer and spiritual director with decades of experience "
+        "leading God's people in prayer. You write prayers that are biblically grounded, "
+        "emotionally honest, theologically rich, and pastorally sensitive. Your prayers feel "
+        "like they come from the heart of a real person before a real God — not corporate "
+        "church-speak. You understand different traditions of prayer: extemporaneous, liturgical, "
+        "intercessory, contemplative, and warfare prayer."
+    )
+    prompt = f"""Write a comprehensive prayer resource on: {payload.topic}
+Prayer type: {payload.prayer_type or 'pastoral / devotional'}
+Occasion: {payload.occasion or 'general use'}
+Denomination context: {payload.denomination or 'broadly Christian'}
+Audience: {payload.audience or 'adult believers'}
+
+## OPENING PRAYER
+A full written prayer (200–300 words) for {payload.topic}.
+Rich in scripture, emotionally honest, theologically grounded.
+
+## SCRIPTURE FOUNDATION
+5–7 key scriptures that ground this type of prayer.
+Brief explanation of how each scripture shapes prayer.
+
+## HOW TO PRAY FOR THIS
+Step-by-step guidance for praying about {payload.topic}:
+- What to confess
+- What to thank God for
+- What to ask for (specific petitions)
+- How to listen and wait
+- How to pray in faith
+
+## PRAYER MODELS FROM SCRIPTURE
+- 2–3 biblical figures who prayed about this (with their specific prayers cited)
+- What their prayers reveal about how God responds
+
+## SHORT PRAYERS (for different contexts)
+- Morning prayer (50 words)
+- Evening reflection (50 words)
+- Crisis prayer (50 words)
+- Thanksgiving prayer (50 words)
+
+## CORPORATE / CONGREGATIONAL PRAYER
+A prayer suitable for a church service, including responsive elements if useful.
+
+## PRAYER JOURNAL PROMPTS
+5 questions for personal journaling around this topic.
+
+## FOR DIFFERENT TRADITIONS
+- How do Catholics approach this prayer topic?
+- How do Pentecostals?
+- How do Reformed/liturgical traditions?
+
+{SOURCE_CITATION_FOOTER}"""
     return _theology(SYS, prompt, 2500)
 
 
-@app.post("/v1/theology/church-history")
-async def church_history(payload: TheologyRequest):
-    SYS = "You are a church historian with expertise across all eras of Christian history."
-    prompt = f"""Write a thorough study on this church history topic: {payload.topic}
-Era: {payload.era or 'all relevant eras'}
-Include:
-1. HISTORICAL OVERVIEW
-2. KEY FIGURES INVOLVED
-3. TIMELINE OF EVENTS
-4. THEOLOGICAL SIGNIFICANCE
-5. IMPACT ON THE CHURCH TODAY
-6. CONTROVERSIES & RESOLUTIONS
-7. SCRIPTURE CONNECTIONS
-8. LESSONS FOR THE MODERN CHURCH
-9. STUDY QUESTIONS (5)
-Be historically accurate and theologically rich."""
-    return _theology(SYS, prompt, 2000)
-
-
-@app.post("/v1/theology/martyr")
-async def martyr_profile(payload: TheologyRequest):
-    SYS = "You are a church historian specializing in Christian martyrology. Write with reverence and historical accuracy."
-    prompt = f"""Write a complete martyr profile for: {payload.name}
-Include:
-1. BIOGRAPHY (life, calling, ministry)
-2. HISTORICAL SETTING
-3. HOW THEY SERVED GOD
-4. PERSECUTION HISTORY
-5. MARTYRDOM — what happened, when, how
-6. SPIRITUAL LESSONS from their life
-7. SCRIPTURE CONNECTIONS
-8. DENOMINATIONAL / TRADITION context
-9. SERMON APPLICATION
-10. STUDY QUESTIONS (5)
-Write with historical accuracy and pastoral warmth."""
-    return _theology(SYS, prompt, 2000)
-
-
-@app.post("/v1/theology/christian-hero")
-async def christian_hero(payload: TheologyRequest):
-    SYS = "You are a church historian and theologian. Write thorough, accurate, inspiring profiles of great Christian leaders."
-    prompt = f"""Write a comprehensive profile of Christian hero/leader: {payload.name}
-Include:
-1. BIOGRAPHY & CALLING
-2. HISTORICAL IMPACT
-3. KEY TEACHINGS & DOCTRINES
-4. MAJOR WORKS / BOOKS / SERMONS
-5. THEOLOGICAL TRADITION
-6. CONTROVERSIES (if any — balanced)
-7. TIMELINE
-8. HOW THEIR LIFE APPLIES TODAY
-9. STUDY QUESTIONS (5)
-10. RECOMMENDED READING
-Be historically accurate and inspirational."""
-    return _theology(SYS, prompt, 2000)
-
-
-@app.post("/v1/theology/apologetics")
-async def apologetics(payload: TheologyRequest):
-    SYS = "You are a Christian apologist trained in classical, evidential, and presuppositional apologetics."
-    prompt = f"""Provide a thorough apologetics answer to this question: {payload.question}
-Tradition: {payload.tradition}
-Include:
-1. THE QUESTION restated clearly
-2. BRIEF ANSWER (summary)
-3. FULL DEFENSE (3-4 paragraphs, theological and philosophical)
-4. SCRIPTURE SUPPORT
-5. HISTORICAL EVIDENCE if applicable
-6. COMMON OBJECTIONS & RESPONSES
-7. RECOMMENDED READING
-8. CLOSING THOUGHT
-Be intellectually rigorous and spiritually grounded."""
-    return _theology(SYS, prompt, 2000)
-
-
-@app.post("/v1/theology/prayer")
-async def generate_prayer_route(payload: TheologyRequest):
-    SYS = "You are a pastoral prayer writer. Write deep, sincere, scripturally grounded prayers."
-    prompt = f"""Write a {payload.type} prayer for: {payload.context}
-The prayer should:
-- Be 200-300 words
-- Reference relevant scripture
-- Be warm, sincere, and theologically sound
-- Include praise, confession, intercession, and surrender
-Write the prayer itself — not a description of it."""
-    return _theology(SYS, prompt, 500)
-
-
+# ── LESSON PLAN ───────────────────────────────────────────────────────────
 @app.post("/v1/theology/lesson-plan")
 async def lesson_plan(payload: TheologyRequest):
-    SYS = "You are a curriculum designer for Christian education. Build structured, progressive lesson plans."
-    prompt = f"""Create a {payload.weeks}-week lesson plan on: {payload.topic}
-Audience: {payload.audience}
-For each week include:
-- Week title
-- Learning objective
-- Main scripture
-- Key points (3)
-- Activity or discussion
-- Homework / reflection
-Make it progressive — each week builds on the previous."""
-    return _theology(SYS, prompt, int(payload.weeks) * 300 + 500)
-
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# ANCIENT TEXTS ENGINE — Dead Sea Scrolls, Enoch, Apocrypha, Pseudepigrapha
-# EASY BIBLE ENGINE — Simple language, beginner, children, prison ministry
-# ═══════════════════════════════════════════════════════════════════════════
-
-# ── CANONICAL STATUS LABELS (never mix without these) ───────────────────────
-CANONICAL_STATUS = {
-    "canonical":     "This text IS part of the accepted biblical canon.",
-    "apocrypha":     "APOCRYPHA — Accepted by Catholic/Orthodox traditions; NOT in Protestant or Jewish Bibles.",
-    "pseudepigrapha":"PSEUDEPIGRAPHA — Ancient Jewish/Christian writing; NOT accepted as Scripture by any major tradition.",
-    "historical":    "HISTORICAL DOCUMENT — Valuable for scholarship; NOT Scripture.",
-    "early-church":  "EARLY CHURCH WRITING — Important historically; NOT Scripture or equal to the Bible.",
-    "non-canonical": "NON-CANONICAL — Not part of any accepted Bible canon.",
-}
-
-ANCIENT_TEXT_DISCLAIMER = (
-    "IMPORTANT DISCLAIMER: This content is for scholarly and historical research. "
-    "It clearly distinguishes between canonical Scripture, Apocrypha, historical writings, "
-    "and theological commentary. Never treat non-canonical texts as equal to the Bible "
-    "without explicit labeling."
-)
-
-class AncientTextRequest(BaseModel):
-    text_name:    str
-    text_category: Optional[str] = "historical"
-    study_type:   Optional[str] = "overview"   # overview | biblical | pastoral | apologetics
-    tradition:    Optional[str] = "evangelical-scholarly"
-    user_id:      Optional[str] = "pastor"
-
-class EasyBibleRequest(BaseModel):
-    passage:      str
-    mode:         Optional[str] = "easy"       # easy | beginner | children | prison | devotion | sermon
-    action:       Optional[str] = "easy"       # easy | deep | historical | language | denominations | sermon | prayer
-    language:     Optional[str] = "english"    # english | spanish
-    user_id:      Optional[str] = "pastor"
-
-
-@app.post("/v1/ancient-texts/study")
-async def ancient_text_study(payload: AncientTextRequest):
-    """
-    AI study for ancient texts — always includes canonical status disclaimer.
-    """
-    if not openai_client:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
-
-    status_label = CANONICAL_STATUS.get(payload.text_category, CANONICAL_STATUS["historical"])
-
-    study_prompts = {
-        "overview": (
-            f"Give a comprehensive scholarly overview of '{payload.text_name}'. "
-            "Include: origin, date, language, discovery/history, contents summary, "
-            "theological themes, historical significance, relation to biblical canon, "
-            "and what scholars agree/disagree on. "
-            "Begin with the canonical status of this text. Be academic but accessible. "
-            f"Status: {status_label}"
-        ),
-        "biblical": (
-            f"Explain all connections between '{payload.text_name}' and the canonical Bible. "
-            "Where does it quote or reference Scripture? Where does the NT cite it? "
-            "What biblical concepts does it illuminate? Where does it DIFFER from Scripture? "
-            "ALWAYS clearly distinguish what IS Scripture vs historical/non-canonical writing. "
-            f"Status: {status_label}"
-        ),
-        "pastoral": (
-            f"How can a pastor responsibly use '{payload.text_name}' in ministry? "
-            "What historical and theological insights does it offer without compromising biblical authority? "
-            "Include: sermon applications, discipleship uses, apologetics value, "
-            "and clear warnings about what is NOT scriptural from this text. "
-            f"Status: {status_label}"
-        ),
-        "apologetics": (
-            f"From a Christian apologetics perspective, evaluate '{payload.text_name}'. "
-            "How do skeptics misuse it? How do Christians respond? "
-            "What does it prove or not prove about the Bible? "
-            "Be academically honest and theologically grounded. "
-            f"Status: {status_label}"
-        ),
-    }
-
     SYS = (
-        "You are a biblical scholar specializing in Second Temple Judaism, Dead Sea Scrolls, "
-        "early Christianity, and ancient manuscripts. You always clearly label canonical status "
-        "of every text — never mixing non-canonical writings with Scripture without explicit labeling. "
-        f"DISCLAIMER: {ANCIENT_TEXT_DISCLAIMER}"
+        "You are a master Christian educator with experience in seminary education, "
+        "Sunday school curriculum development, and adult discipleship programs. "
+        "You create lesson plans that are educationally sound, theologically rigorous, "
+        "and practically applicable — usable by a first-time Sunday school teacher "
+        "or a seasoned seminary professor."
     )
+    prompt = f"""Create a complete, production-ready lesson plan on: {payload.topic}
+Duration: {payload.duration or '45–60 minutes'}
+Audience: {payload.audience or 'adult church class'}
+Setting: {payload.setting or 'Sunday school or small group'}
+Denomination: {payload.denomination or 'non-denominational'}
+Depth level: {payload.depth or 'intermediate'}
 
-    prompt = study_prompts.get(payload.study_type, study_prompts["overview"])
-    content = _gpt(SYS, prompt, max_tokens=2000)
+## LESSON OVERVIEW
+- Title (memorable and compelling)
+- Big Idea (one sentence — what this lesson is fundamentally about)
+- Learning Objectives: Students will KNOW ___, BELIEVE ___, DO ___
+- Key Scripture: Primary passage with full text
 
-    return {
-        "success":         True,
-        "text_name":       payload.text_name,
-        "study_type":      payload.study_type,
-        "canonical_status": status_label,
-        "disclaimer":      ANCIENT_TEXT_DISCLAIMER,
-        "content":         content,
-        "model":           "gpt-4o",
-        "generatedAt":     datetime.now(timezone.utc).isoformat(),
-    }
+## PREPARATION (for the teacher)
+- Background reading (2–3 recommended resources)
+- Key theological concepts to understand before teaching
+- Potential difficult questions and suggested responses
+- Materials needed
 
+## LESSON OUTLINE
 
-@app.post("/v1/ancient-texts/qumran")
-async def qumran_study(payload: TheologyRequest):
-    """Qumran community & Dead Sea Scrolls background study."""
-    if not openai_client:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
-    SYS = (
-        "You are an expert in Dead Sea Scrolls scholarship, Second Temple Judaism, and Qumran history. "
-        "Always clarify what is historical fact, scholarly consensus, or ongoing debate."
-    )
-    prompt = (
-        f"Write a comprehensive study on: {payload.topic or 'The Qumran Community and Dead Sea Scrolls'}\n\n"
-        "Include:\n"
-        "1. Who were the Essenes / Qumran community?\n"
-        "2. Historical timeline (discovery, dating, key figures)\n"
-        "3. Their theology and beliefs\n"
-        "4. How the scrolls confirm biblical text accuracy\n"
-        "5. Unique documents found (non-biblical)\n"
-        "6. Comparison with early Christianity\n"
-        "7. Pastoral and apologetics value today\n"
-        "8. Study questions (5)\n"
-        "Always label what is Scripture vs. historical document."
-    )
-    result = _gpt(SYS, prompt, max_tokens=2000)
-    return {
-        "success": True,
-        "content": result,
-        "disclaimer": ANCIENT_TEXT_DISCLAIMER,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-    }
+### HOOK / OPENING (5–10 minutes)
+- An attention-grabbing story, question, or activity
+- Connect the opening to the lesson's big idea
 
+### BIBLICAL CONTENT (20–30 minutes)
+- Section 1: [Title] — explanation, scripture, illustration
+- Section 2: [Title] — explanation, scripture, illustration
+- Section 3: [Title] — explanation, scripture, illustration
+Each section: what to say, what to ask, how long to spend
 
-@app.post("/v1/easy-bible/explain")
-async def easy_bible_explain(payload: EasyBibleRequest):
-    """
-    Easy OBM Bible Mode — simple language Bible explanations.
-    Supports: easy, beginner, children, prison, devotion, sermon modes.
-    Supports English and Spanish.
-    """
-    if not openai_client:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+### APPLICATION BRIDGE (10 minutes)
+- How does this biblical truth change how we live?
+- 3 specific real-life scenarios where this applies
+- Group activity or pair-share exercise
 
-    lang = "Spanish" if payload.language == "spanish" else "English"
+### DISCUSSION (10 minutes)
+- 4–5 discussion questions (mix of observation, interpretation, application)
+- Tips for facilitating good discussion
 
-    audience_map = {
-        "easy":     "a general adult audience using simple, clear, everyday language — no seminary jargon",
-        "beginner": "someone who has never read the Bible before — explain every concept, no assumed knowledge",
-        "children": "children ages 6–12 — use a fun story approach, simple words, relatable examples, and excitement",
-        "prison":   "someone in prison ministry — emphasize grace, redemption, forgiveness, and new life in Christ. Be warm, hopeful, and direct.",
-        "devotion": "a personal devotional reader — make it warm, personal, encouraging, and spiritually nourishing",
-        "sermon":   "a pastor preparing a simple, accessible sermon — give a clean outline with practical application",
-    }
+### CLOSING (5 minutes)
+- Summary of key points
+- Memory verse
+- Challenge for the week
+- Closing prayer
 
-    action_map = {
-        "easy": (
-            f"Explain {payload.passage} in {lang} for {audience_map.get(payload.mode,'a general audience')}.\n"
-            "Include:\n1. What it says in simple words\n2. What it meant when written\n"
-            "3. What it means for life today\n4. One key takeaway\n5. An encouraging closing thought.\n"
-            "Keep it warm, accessible, and spiritually alive."
-        ),
-        "deep": (
-            f"Give a deep theological study of {payload.passage} in {lang}.\n"
-            "Include: Greek/Hebrew word meanings, context in chapter and book, "
-            "major theological themes, cross-references, and key commentary insights.\n"
-            f"Audience: {audience_map.get(payload.mode,'general')}."
-        ),
-        "historical": (
-            f"Explain the historical and cultural background of {payload.passage} in {lang}.\n"
-            "Who wrote it? When? To whom? What was happening historically? "
-            "How does context change how we read it today?\n"
-            f"Audience: {audience_map.get(payload.mode,'general')}."
-        ),
-        "language": (
-            f"Break down the original language of {payload.passage} in {lang}.\n"
-            "Show key Hebrew or Greek words, root meanings, translation nuances, "
-            "and how English versions differ.\n"
-            f"Make this accessible for {audience_map.get(payload.mode,'a general audience')}."
-        ),
-        "denominations": (
-            f"Explain how 4 different Christian denominations interpret {payload.passage} in {lang}.\n"
-            "Include: Baptist, Catholic, Pentecostal, and Reformed. "
-            "Note agreements, disagreements, and why.\n"
-            f"Write for {audience_map.get(payload.mode,'a general audience')}."
-        ),
-        "sermon": (
-            f"Create a simple sermon outline from {payload.passage} in {lang} "
-            f"for {audience_map.get(payload.mode,'general congregation')}.\n"
-            "Include: title, 3 main points with scripture, illustration for each, "
-            "practical application, and closing call to action."
-        ),
-        "prayer": (
-            f"Write a heartfelt prayer based on {payload.passage} in {lang} "
-            f"for {audience_map.get(payload.mode,'a general audience')}.\n"
-            "Include: praise, reflection on the verse, personal petition, and surrender. 150–200 words."
-        ),
-    }
+## DIFFERENTIATION
+- How to simplify for new believers
+- How to deepen for mature believers
+- How to adapt for youth
 
-    SYS = (
-        f"You are a compassionate Bible teacher who excels at making Scripture accessible in {lang}. "
-        "You adapt your language to your audience — from children to seminary students. "
-        "You are always biblically accurate, warm, and encouraging."
-    )
+## TAKE-HOME RESOURCE
+A one-paragraph summary students can take home.
 
-    prompt = action_map.get(payload.action, action_map["easy"])
-    content = _gpt(SYS, prompt, max_tokens=1500)
-
-    return {
-        "success":    True,
-        "passage":    payload.passage,
-        "action":     payload.action,
-        "mode":       payload.mode,
-        "language":   lang,
-        "content":    content,
-        "model":      "gpt-4o",
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@app.post("/v1/easy-bible/verse-breakdown")
-async def verse_breakdown(payload: EasyBibleRequest):
-    """Verse-by-verse breakdown for an entire passage."""
-    if not openai_client:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
-
-    lang = "Spanish" if payload.language == "spanish" else "English"
-    mode = payload.mode or "easy"
-
-    SYS = (
-        f"You are a Bible teacher explaining Scripture verse-by-verse in {lang}. "
-        "You make every verse crystal clear, meaningful, and applicable."
-    )
-    prompt = (
-        f"Do a complete verse-by-verse breakdown of {payload.passage} in {lang}.\n"
-        "For EACH verse:\n"
-        "VERSE: [verse reference and text]\n"
-        "MEANING: [what this verse means in simple terms]\n"
-        "APPLICATION: [one practical takeaway]\n\n"
-        f"Write for someone who is {mode} — adjust language accordingly.\n"
-        "After all verses, add a 'BIG PICTURE' section summarizing the whole passage."
-    )
-    content = _gpt(SYS, prompt, max_tokens=2000)
-
-    return {
-        "success":    True,
-        "passage":    payload.passage,
-        "mode":       mode,
-        "language":   lang,
-        "content":    content,
-        "model":      "gpt-4o",
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# CHRISTIAN MARTYR STUDIES + BLACK CHRISTIAN HISTORY ENGINE
-# ═══════════════════════════════════════════════════════════════════════════
-
-class MartyrStudyRequest(BaseModel):
-    figure_name:    str
-    study_type:     Optional[str] = "biography"
-    denomination:   Optional[str] = None
-    era:            Optional[str] = None
-    region:         Optional[str] = None
-    user_id:        Optional[str] = "pastor"
-
-class BlackChristianHistoryRequest(BaseModel):
-    figure_name:    str
-    study_type:     Optional[str] = "biography"
-    era:            Optional[str] = None
-    denomination:   Optional[str] = None
-    user_id:        Optional[str] = "pastor"
-
-class HistorySearchRequest(BaseModel):
-    query:          str
-    denomination:   Optional[str] = None
-    country:        Optional[str] = None
-    century:        Optional[str] = None
-    theology:       Optional[str] = None
-    persecution_type: Optional[str] = None
-    race_ethnicity: Optional[str] = None
-    church_era:     Optional[str] = None
-    ministry_type:  Optional[str] = None
-    user_id:        Optional[str] = "pastor"
-
-
-MARTYR_STUDY_PROMPTS = {
-    "biography": (
-        "Write a comprehensive biography of {name}. Include:\n"
-        "1. Early life and background\n"
-        "2. Conversion story (if applicable)\n"
-        "3. Ministry and calling\n"
-        "4. Persecution details — what happened, who persecuted them, why\n"
-        "5. Death or suffering — how they faced it\n"
-        "6. Last words or famous quotes\n"
-        "7. Historical context of the persecution\n"
-        "8. Theological beliefs and denomination\n"
-        "9. Legacy and impact on Christianity\n"
-        "Be historically accurate, cite sources where possible, and write with pastoral warmth."
-    ),
-    "sermon": (
-        "Create a powerful sermon inspired by the life of {name}. Include:\n"
-        "Title, Scripture text, introduction with their story, 3 main points drawn from their faith,\n"
-        "practical application, illustration from their life, and a closing call to courageous faith.\n"
-        "Make it preachable, moving, and historically grounded."
-    ),
-    "bible_study": (
-        "Create a Bible study based on the life and faith of {name}. Include:\n"
-        "Opening scripture, 5 key Bible passages that speak to their experience,\n"
-        "discussion questions for each passage, historical connections,\n"
-        "personal application questions, and closing prayer.\n"
-        "Make it suitable for a small group or Sunday school class."
-    ),
-    "lessons": (
-        "What are the key spiritual lessons Christians today can learn from {name}? Include:\n"
-        "1. Lessons about courage and faith under pressure\n"
-        "2. Lessons about prayer and the Holy Spirit\n"
-        "3. How their example challenges comfortable Christianity\n"
-        "4. How their story applies to persecuted Christians today\n"
-        "5. What they would say to the Western church\n"
-        "6. Personal application — how should this change us?\n"
-        "Be direct, pastoral, and spiritually challenging."
-    ),
-    "prayer": (
-        "Write a pastoral prayer inspired by the life and sacrifice of {name}. Include:\n"
-        "Acknowledgment of their sacrifice, thanksgiving for their example,\n"
-        "intercession for persecuted Christians worldwide today,\n"
-        "personal petition for similar courage, and surrender to God's purposes.\n"
-        "Also include 5 reflection questions for personal devotional use."
-    ),
-    "timeline": (
-        "Create a detailed timeline of {name}'s life and historical context. Include:\n"
-        "- Major world events during their lifetime\n"
-        "- Key moments in their personal faith journey\n"
-        "- The political/religious climate leading to their persecution\n"
-        "- The persecution events in sequence\n"
-        "- Their death or imprisonment\n"
-        "- Immediate aftermath and legacy\n"
-        "Format as a clear chronological list with dates."
-    ),
-    "map": (
-        "Describe the geographical and historical context of {name}'s life and ministry. Include:\n"
-        "- Where they were born and raised\n"
-        "- Where they ministered\n"
-        "- Where the persecution occurred\n"
-        "- The geopolitical situation of that region\n"
-        "- How geography shaped their story\n"
-        "- The state of Christianity in that region before and after them\n"
-        "- Modern-day equivalent locations"
-    ),
-    "quotes": (
-        "Compile and deeply analyze the most famous writings, quotes, and last words of {name}. Include:\n"
-        "- Their most famous quote with full context\n"
-        "- Letters or writings (if any) with explanation\n"
-        "- Last words before death (if recorded)\n"
-        "- How their words have been used throughout history\n"
-        "- Biblical passages their words echo\n"
-        "- How their words speak to the church today\n"
-        "Format for use in sermons, Bible studies, and devotionals."
-    ),
-}
-
-BLACK_HISTORY_STUDY_PROMPTS = {
-    "biography": (
-        "Write a comprehensive biography of {name} in the context of Black Christian history. Include:\n"
-        "1. Early life, family background, and the historical era they lived in\n"
-        "2. Faith journey and conversion (if applicable)\n"
-        "3. Ministry, calling, and key achievements\n"
-        "4. Challenges faced due to race, slavery, segregation, or discrimination\n"
-        "5. How their faith shaped their response to injustice\n"
-        "6. Their theological beliefs and denomination\n"
-        "7. Legacy — impact on the church and on society\n"
-        "8. Why Black Christians today should know their story\n"
-        "Be historically rigorous and spiritually rich."
-    ),
-    "theological": (
-        "Analyze the theological legacy of {name} in Christian history. Include:\n"
-        "1. Their core theological beliefs\n"
-        "2. How they understood the Gospel in relation to race, freedom, and justice\n"
-        "3. Their contribution to Christian thought, doctrine, or biblical interpretation\n"
-        "4. How their theology compares to their contemporaries\n"
-        "5. How their theological framework has influenced later thinkers\n"
-        "6. Key writings or sermons (with analysis)\n"
-        "7. What the broader church has learned from their tradition\n"
-        "Be academically grounded and pastorally relevant."
-    ),
-    "sermon": (
-        "Create a powerful sermon inspired by the life and faith of {name}. Include:\n"
-        "Title, Scripture text, introduction with their historical story,\n"
-        "3 main points drawn from their faith and example,\n"
-        "practical application for today's church,\n"
-        "how their story speaks across racial and denominational lines,\n"
-        "and a closing invitation.\n"
-        "Make it historically grounded, spiritually powerful, and broadly applicable."
-    ),
-    "bible_study": (
-        "Create a Bible study based on the life, faith, and legacy of {name}. Include:\n"
-        "Opening scripture and historical context,\n"
-        "5 key Bible passages that illuminate their experience,\n"
-        "discussion questions connecting their life to Scripture,\n"
-        "how their story reflects biblical themes (liberation, faithfulness, justice),\n"
-        "personal application questions, and closing prayer.\n"
-        "Design it for diverse church settings — including Black church, white church, and multi-ethnic congregations."
-    ),
-    "historical": (
-        "Provide deep historical context for understanding {name} and their era. Include:\n"
-        "1. The broader historical events of their time\n"
-        "2. The state of the church during their era\n"
-        "3. The racial, political, and social context\n"
-        "4. How Black Christians fit into the larger Christian story of that period\n"
-        "5. Primary sources and scholarly works about them\n"
-        "6. Common misconceptions or overlooked facts\n"
-        "7. How history has treated their legacy"
-    ),
-    "quotes": (
-        "Compile and analyze the most famous quotes, sermons, and writings of {name}. Include:\n"
-        "- 5+ significant quotes with context\n"
-        "- Their most famous sermon or speech excerpt\n"
-        "- How their words challenged both church and society\n"
-        "- Biblical passages their words echo\n"
-        "- How their words are relevant to the church today\n"
-        "Format for use in sermons, studies, and social media."
-    ),
-    "prayer": (
-        "Write a prayer and reflection based on the life and faith of {name}. Include:\n"
-        "Thanksgiving for their example, confession of the church's failures toward Black Christians,\n"
-        "intercession for unity in the body of Christ across racial lines,\n"
-        "personal petition for their kind of courageous faith,\n"
-        "and 5 devotional reflection questions.\n"
-        "Make it suitable for both Black and multiethnic church settings."
-    ),
-    "timeline": (
-        "Create a detailed historical timeline of {name}'s life in context. Include:\n"
-        "- Major world and American events during their lifetime\n"
-        "- Key moments in Black church history during their era\n"
-        "- Their personal life journey in sequence\n"
-        "- How historical events shaped their ministry\n"
-        "- Their lasting contributions year by year\n"
-        "Format as a clear chronological list."
-    ),
-    "lessons": (
-        "What are the key spiritual and historical lessons the church today should learn from {name}? Include:\n"
-        "1. Lessons about faith under oppression\n"
-        "2. Lessons about church unity and racial reconciliation\n"
-        "3. What Black church history teaches white Christians\n"
-        "4. What their story says about the power of the Gospel\n"
-        "5. How their example challenges comfortable Christianity\n"
-        "6. Practical steps for churches wanting to honor this legacy\n"
-        "Be direct, historically honest, and spiritually transformative."
-    ),
-    "music": (
-        "Analyze the musical, worship, and cultural legacy of {name} in Christian history. Include:\n"
-        "1. Their contribution to Christian music or worship (if applicable)\n"
-        "2. The theological content of their music or the music of their tradition\n"
-        "3. How their music or worship tradition shaped broader Christianity\n"
-        "4. Key songs, hymns, or spirituals associated with them\n"
-        "5. How their musical legacy continues today\n"
-        "6. The connection between Black worship tradition and global Christian music"
-    ),
-}
-
-
-def _martyr_prompt(figure_name: str, study_type: str, prompt_map: dict) -> str:
-    template = prompt_map.get(study_type, prompt_map.get("biography", "Write a comprehensive study of {name}."))
-    return template.format(name=figure_name)
+{SOURCE_CITATION_FOOTER}"""
+    return _theology(SYS, prompt, 3000)
 
 
 @app.post("/v1/martyrs/study")
