@@ -1,14 +1,3 @@
-services:
-  - type: web
-    name: terrellos-backend
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ELEVENLABS_API_KEY
-        sync: false
-      - key: ELEVENLABS_VOICE_ID
-        sync: false
-    autoDeploy: true
+# This project has migrated to Railway.
+# See railway.toml for deployment configuration.
+# Render deployment is no longer active.
