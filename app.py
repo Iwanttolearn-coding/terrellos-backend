@@ -1487,3 +1487,324 @@ async def verse_breakdown(payload: EasyBibleRequest):
         "model":      "gpt-4o",
         "generatedAt": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHRISTIAN MARTYR STUDIES + BLACK CHRISTIAN HISTORY ENGINE
+# ═══════════════════════════════════════════════════════════════════════════
+
+class MartyrStudyRequest(BaseModel):
+    figure_name:    str
+    study_type:     Optional[str] = "biography"
+    denomination:   Optional[str] = None
+    era:            Optional[str] = None
+    region:         Optional[str] = None
+    user_id:        Optional[str] = "pastor"
+
+class BlackChristianHistoryRequest(BaseModel):
+    figure_name:    str
+    study_type:     Optional[str] = "biography"
+    era:            Optional[str] = None
+    denomination:   Optional[str] = None
+    user_id:        Optional[str] = "pastor"
+
+class HistorySearchRequest(BaseModel):
+    query:          str
+    denomination:   Optional[str] = None
+    country:        Optional[str] = None
+    century:        Optional[str] = None
+    theology:       Optional[str] = None
+    persecution_type: Optional[str] = None
+    race_ethnicity: Optional[str] = None
+    church_era:     Optional[str] = None
+    ministry_type:  Optional[str] = None
+    user_id:        Optional[str] = "pastor"
+
+
+MARTYR_STUDY_PROMPTS = {
+    "biography": (
+        "Write a comprehensive biography of {name}. Include:\n"
+        "1. Early life and background\n"
+        "2. Conversion story (if applicable)\n"
+        "3. Ministry and calling\n"
+        "4. Persecution details — what happened, who persecuted them, why\n"
+        "5. Death or suffering — how they faced it\n"
+        "6. Last words or famous quotes\n"
+        "7. Historical context of the persecution\n"
+        "8. Theological beliefs and denomination\n"
+        "9. Legacy and impact on Christianity\n"
+        "Be historically accurate, cite sources where possible, and write with pastoral warmth."
+    ),
+    "sermon": (
+        "Create a powerful sermon inspired by the life of {name}. Include:\n"
+        "Title, Scripture text, introduction with their story, 3 main points drawn from their faith,\n"
+        "practical application, illustration from their life, and a closing call to courageous faith.\n"
+        "Make it preachable, moving, and historically grounded."
+    ),
+    "bible_study": (
+        "Create a Bible study based on the life and faith of {name}. Include:\n"
+        "Opening scripture, 5 key Bible passages that speak to their experience,\n"
+        "discussion questions for each passage, historical connections,\n"
+        "personal application questions, and closing prayer.\n"
+        "Make it suitable for a small group or Sunday school class."
+    ),
+    "lessons": (
+        "What are the key spiritual lessons Christians today can learn from {name}? Include:\n"
+        "1. Lessons about courage and faith under pressure\n"
+        "2. Lessons about prayer and the Holy Spirit\n"
+        "3. How their example challenges comfortable Christianity\n"
+        "4. How their story applies to persecuted Christians today\n"
+        "5. What they would say to the Western church\n"
+        "6. Personal application — how should this change us?\n"
+        "Be direct, pastoral, and spiritually challenging."
+    ),
+    "prayer": (
+        "Write a pastoral prayer inspired by the life and sacrifice of {name}. Include:\n"
+        "Acknowledgment of their sacrifice, thanksgiving for their example,\n"
+        "intercession for persecuted Christians worldwide today,\n"
+        "personal petition for similar courage, and surrender to God's purposes.\n"
+        "Also include 5 reflection questions for personal devotional use."
+    ),
+    "timeline": (
+        "Create a detailed timeline of {name}'s life and historical context. Include:\n"
+        "- Major world events during their lifetime\n"
+        "- Key moments in their personal faith journey\n"
+        "- The political/religious climate leading to their persecution\n"
+        "- The persecution events in sequence\n"
+        "- Their death or imprisonment\n"
+        "- Immediate aftermath and legacy\n"
+        "Format as a clear chronological list with dates."
+    ),
+    "map": (
+        "Describe the geographical and historical context of {name}'s life and ministry. Include:\n"
+        "- Where they were born and raised\n"
+        "- Where they ministered\n"
+        "- Where the persecution occurred\n"
+        "- The geopolitical situation of that region\n"
+        "- How geography shaped their story\n"
+        "- The state of Christianity in that region before and after them\n"
+        "- Modern-day equivalent locations"
+    ),
+    "quotes": (
+        "Compile and deeply analyze the most famous writings, quotes, and last words of {name}. Include:\n"
+        "- Their most famous quote with full context\n"
+        "- Letters or writings (if any) with explanation\n"
+        "- Last words before death (if recorded)\n"
+        "- How their words have been used throughout history\n"
+        "- Biblical passages their words echo\n"
+        "- How their words speak to the church today\n"
+        "Format for use in sermons, Bible studies, and devotionals."
+    ),
+}
+
+BLACK_HISTORY_STUDY_PROMPTS = {
+    "biography": (
+        "Write a comprehensive biography of {name} in the context of Black Christian history. Include:\n"
+        "1. Early life, family background, and the historical era they lived in\n"
+        "2. Faith journey and conversion (if applicable)\n"
+        "3. Ministry, calling, and key achievements\n"
+        "4. Challenges faced due to race, slavery, segregation, or discrimination\n"
+        "5. How their faith shaped their response to injustice\n"
+        "6. Their theological beliefs and denomination\n"
+        "7. Legacy — impact on the church and on society\n"
+        "8. Why Black Christians today should know their story\n"
+        "Be historically rigorous and spiritually rich."
+    ),
+    "theological": (
+        "Analyze the theological legacy of {name} in Christian history. Include:\n"
+        "1. Their core theological beliefs\n"
+        "2. How they understood the Gospel in relation to race, freedom, and justice\n"
+        "3. Their contribution to Christian thought, doctrine, or biblical interpretation\n"
+        "4. How their theology compares to their contemporaries\n"
+        "5. How their theological framework has influenced later thinkers\n"
+        "6. Key writings or sermons (with analysis)\n"
+        "7. What the broader church has learned from their tradition\n"
+        "Be academically grounded and pastorally relevant."
+    ),
+    "sermon": (
+        "Create a powerful sermon inspired by the life and faith of {name}. Include:\n"
+        "Title, Scripture text, introduction with their historical story,\n"
+        "3 main points drawn from their faith and example,\n"
+        "practical application for today's church,\n"
+        "how their story speaks across racial and denominational lines,\n"
+        "and a closing invitation.\n"
+        "Make it historically grounded, spiritually powerful, and broadly applicable."
+    ),
+    "bible_study": (
+        "Create a Bible study based on the life, faith, and legacy of {name}. Include:\n"
+        "Opening scripture and historical context,\n"
+        "5 key Bible passages that illuminate their experience,\n"
+        "discussion questions connecting their life to Scripture,\n"
+        "how their story reflects biblical themes (liberation, faithfulness, justice),\n"
+        "personal application questions, and closing prayer.\n"
+        "Design it for diverse church settings — including Black church, white church, and multi-ethnic congregations."
+    ),
+    "historical": (
+        "Provide deep historical context for understanding {name} and their era. Include:\n"
+        "1. The broader historical events of their time\n"
+        "2. The state of the church during their era\n"
+        "3. The racial, political, and social context\n"
+        "4. How Black Christians fit into the larger Christian story of that period\n"
+        "5. Primary sources and scholarly works about them\n"
+        "6. Common misconceptions or overlooked facts\n"
+        "7. How history has treated their legacy"
+    ),
+    "quotes": (
+        "Compile and analyze the most famous quotes, sermons, and writings of {name}. Include:\n"
+        "- 5+ significant quotes with context\n"
+        "- Their most famous sermon or speech excerpt\n"
+        "- How their words challenged both church and society\n"
+        "- Biblical passages their words echo\n"
+        "- How their words are relevant to the church today\n"
+        "Format for use in sermons, studies, and social media."
+    ),
+    "prayer": (
+        "Write a prayer and reflection based on the life and faith of {name}. Include:\n"
+        "Thanksgiving for their example, confession of the church's failures toward Black Christians,\n"
+        "intercession for unity in the body of Christ across racial lines,\n"
+        "personal petition for their kind of courageous faith,\n"
+        "and 5 devotional reflection questions.\n"
+        "Make it suitable for both Black and multiethnic church settings."
+    ),
+    "timeline": (
+        "Create a detailed historical timeline of {name}'s life in context. Include:\n"
+        "- Major world and American events during their lifetime\n"
+        "- Key moments in Black church history during their era\n"
+        "- Their personal life journey in sequence\n"
+        "- How historical events shaped their ministry\n"
+        "- Their lasting contributions year by year\n"
+        "Format as a clear chronological list."
+    ),
+    "lessons": (
+        "What are the key spiritual and historical lessons the church today should learn from {name}? Include:\n"
+        "1. Lessons about faith under oppression\n"
+        "2. Lessons about church unity and racial reconciliation\n"
+        "3. What Black church history teaches white Christians\n"
+        "4. What their story says about the power of the Gospel\n"
+        "5. How their example challenges comfortable Christianity\n"
+        "6. Practical steps for churches wanting to honor this legacy\n"
+        "Be direct, historically honest, and spiritually transformative."
+    ),
+    "music": (
+        "Analyze the musical, worship, and cultural legacy of {name} in Christian history. Include:\n"
+        "1. Their contribution to Christian music or worship (if applicable)\n"
+        "2. The theological content of their music or the music of their tradition\n"
+        "3. How their music or worship tradition shaped broader Christianity\n"
+        "4. Key songs, hymns, or spirituals associated with them\n"
+        "5. How their musical legacy continues today\n"
+        "6. The connection between Black worship tradition and global Christian music"
+    ),
+}
+
+
+def _martyr_prompt(figure_name: str, study_type: str, prompt_map: dict) -> str:
+    template = prompt_map.get(study_type, prompt_map.get("biography", "Write a comprehensive study of {name}."))
+    return template.format(name=figure_name)
+
+
+@app.post("/v1/martyrs/study")
+async def martyr_study(payload: MartyrStudyRequest):
+    """Full AI study for any Christian martyr or persecuted believer."""
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    SYS = (
+        "You are a Christian historian and pastor specializing in church history, martyrology, "
+        "and the theology of suffering and persecution. You write with historical accuracy, "
+        "pastoral warmth, and deep reverence for those who gave their lives for Christ. "
+        "You are useful for pastors, teachers, and Christians who want to learn from the "
+        "courage of those who came before them."
+    )
+
+    prompt = _martyr_prompt(payload.figure_name, payload.study_type, MARTYR_STUDY_PROMPTS)
+    content = _gpt(SYS, prompt, max_tokens=2200)
+
+    return {
+        "success":     True,
+        "figure_name": payload.figure_name,
+        "study_type":  payload.study_type,
+        "content":     content,
+        "model":       "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/v1/black-christian-history/study")
+async def black_christian_history_study(payload: BlackChristianHistoryRequest):
+    """Full AI study for any figure in Black Christian history."""
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    SYS = (
+        "You are a historian and theologian specializing in Black Christian history — "
+        "from the African church fathers and Ethiopian Christianity to the slavery era, "
+        "the Black church, civil rights movement, and modern Black Christian leaders. "
+        "You write with historical rigor, theological depth, and pastoral relevance. "
+        "You help the entire church — of every background — understand and honor "
+        "the profound contributions of Black Christians throughout history. "
+        "You are honest about both the failures of the church toward Black people "
+        "and the extraordinary faith of Black Christians despite those failures."
+    )
+
+    prompt = _martyr_prompt(payload.figure_name, payload.study_type, BLACK_HISTORY_STUDY_PROMPTS)
+    content = _gpt(SYS, prompt, max_tokens=2200)
+
+    return {
+        "success":     True,
+        "figure_name": payload.figure_name,
+        "study_type":  payload.study_type,
+        "content":     content,
+        "model":       "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/v1/history/search")
+async def christian_history_search(payload: HistorySearchRequest):
+    """
+    Global Christian history search — search by figure, denomination, country,
+    century, theology, persecution type, race/ethnicity, church era, or ministry type.
+    """
+    if not openai_client:
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
+
+    filters = []
+    if payload.denomination:   filters.append(f"denomination: {payload.denomination}")
+    if payload.country:        filters.append(f"country/region: {payload.country}")
+    if payload.century:        filters.append(f"century: {payload.century}")
+    if payload.theology:       filters.append(f"theological tradition: {payload.theology}")
+    if payload.persecution_type: filters.append(f"persecution type: {payload.persecution_type}")
+    if payload.race_ethnicity: filters.append(f"race/ethnicity: {payload.race_ethnicity}")
+    if payload.church_era:     filters.append(f"church era: {payload.church_era}")
+    if payload.ministry_type:  filters.append(f"ministry type: {payload.ministry_type}")
+
+    filter_str = "\n".join(f"- {f}" for f in filters) if filters else "No additional filters — broad search."
+
+    SYS = (
+        "You are a comprehensive Christian historian with knowledge of the entire 2,000-year "
+        "history of Christianity — martyrs, theologians, church fathers, missionaries, "
+        "revival leaders, Black Christian history, denominational history, and global persecution. "
+        "You provide accurate, detailed, and pastorally useful information about Christian historical figures."
+    )
+
+    prompt = (
+        f"Search Christian history for: '{payload.query}'\n\n"
+        f"Filters applied:\n{filter_str}\n\n"
+        "Return:\n"
+        "1. Top 5–10 relevant historical figures or events matching the search\n"
+        "2. For each: name, dates, denomination/tradition, region, brief description (2–3 sentences)\n"
+        "3. Why they are relevant to this search\n"
+        "4. Suggested further study\n"
+        "Format clearly with headers for each result."
+    )
+
+    content = _gpt(SYS, prompt, max_tokens=2000)
+
+    return {
+        "success":  True,
+        "query":    payload.query,
+        "filters":  filters,
+        "content":  content,
+        "model":    "gpt-4o",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
