@@ -7,30 +7,24 @@ primary_region = "dfw"
 [env]
   FRONTEND_URL = "https://heavenlyeternalecho.com"
 
-[[services]]
+[http_service]
   internal_port = 8080
-  protocol = "tcp"
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
 
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-    force_https = true
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-  [services.concurrency]
+  [http_service.concurrency]
     type = "connections"
     hard_limit = 100
     soft_limit = 80
 
-  [[services.http_checks]]
-    interval = "15s"
-    timeout = "10s"
-    grace_period = "30s"
-    method = "get"
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
     path = "/health"
+    timeout = "15s"
 
 [[vm]]
   memory = "512mb"
