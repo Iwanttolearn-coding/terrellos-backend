@@ -24,6 +24,13 @@ primary_region = "dfw"
     hard_limit = 100
     soft_limit = 80
 
+  [http_service.checks]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "get"
+    path = "/health"
+
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"
