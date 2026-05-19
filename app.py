@@ -14,21 +14,15 @@ from pastor_routes import router as pastor_router
 app = FastAPI(
     title="TerrellOS Backend",
     version="8.0.0-full",
-    description="TerrellOS / Heavenly Eternal Echo production AI backend"
+    description="Pastor AI Connect | Powered by TM Dezigns — Production Backend"
 )
 
 # ── CORS — env-driven allowlist ────────────────────────────────────────────
 _CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
-    "https://heavenlyeternalecho.com",
-    "https://www.heavenlyeternalecho.com",
-    "https://pastoraiconnect.com",
-    "https://www.pastoraiconnect.com",
-    "https://pastor-ai-connect.com",
-    "https://www.pastor-ai-connect.com",
-    "https://terrellos.com",
-    "https://www.terrellos.com",
-    "https://app.base44.com",
+    "https://app.tm-dezigns.org",
+    "https://tm-dezigns.org",
+    "https://terrellos-frontend.vercel.app",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:8080",
