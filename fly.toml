@@ -1,3 +1,7 @@
+# fly.toml — TerrellOS FastAPI Backend
+# Deploy: fly launch --name terrellos-backend --region dfw --yes
+# Redeploy: fly deploy
+
 app = "terrellos-backend"
 primary_region = "dfw"
 
