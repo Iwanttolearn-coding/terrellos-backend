@@ -5,22 +5,27 @@ primary_region = "dfw"
   dockerfile = "Dockerfile"
 
 [env]
-  FRONTEND_URL = "https://app.tm-dezigns.org"
-  PORT = "8080"
+  FRONTEND_URL = "https://heavenlyeternalecho.com"
 
-[http_service]
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+  protocol = "tcp"
 
-  [http_service.concurrency]
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
     type = "connections"
     hard_limit = 100
     soft_limit = 80
 
-  [[http_service.checks]]
+  [[services.http_checks]]
     interval = "15s"
     timeout = "10s"
     grace_period = "30s"
