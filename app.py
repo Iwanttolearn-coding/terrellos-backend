@@ -134,6 +134,21 @@ class WhisperTranscribeRequest(BaseModel):
 
 
 # ── Status ────────────────────────────────────────────────────────────────────
+
+class MartyrStudyRequest(BaseModel):
+    figure_name: str
+    study_type: Optional[str] = "full"
+
+class BlackChristianHistoryRequest(BaseModel):
+    topic: Optional[str] = ""
+    era: Optional[str] = ""
+    region: Optional[str] = ""
+
+class HistorySearchRequest(BaseModel):
+    query: str
+    category: Optional[str] = ""
+
+
 @app.get("/status")
 async def status():
     """Simple status check — returns active service capabilities."""
