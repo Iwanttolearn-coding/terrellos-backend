@@ -46,7 +46,7 @@ APP_REGISTRY = {
     },
     "heavenly-eternal-echo": {
         "name": "Heavenly Eternal Echoes",
-        "domain": "heavenlyeternalechoes.com",
+        "domain": "heavenlyeternalecho.com",
         "description": "AI Memory & Legacy Platform",
         "theme": "blue",
         "modules": ["core","memory","voice","echo","uploads"],
@@ -110,7 +110,7 @@ _CORS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
     "https://app.tm-dezigns.com",
     "https://pastoraiconnect.com",
-    "https://heavenlyeternalechoes.com",
+    "https://heavenlyeternalecho.com",
     "https://allaroundcustoms.com",
     "https://kindredlovebirds.com",
     "https://residentsyncai.com",
