@@ -39,9 +39,7 @@ app.add_middleware(
 
 app.include_router(pastor_router)
 
-OPENAI_API_KEY      = os.getenv("app.include_router(pastor_router)
-
-OPENAI_API_KEY")
+OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL",    "eleven_multilingual_v2")
@@ -49,11 +47,7 @@ WHISPER_MODEL       = os.getenv("WHISPER_MODEL",       "whisper-1")
 IMAGE_MODEL         = os.getenv("IMAGE_MODEL",         "dall-e-3")
 FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://heavenlyeternalecho.com")
 
-openai_client = OpenAI(api_key=app.include_router(pastor_router)
-
-OPENAI_API_KEY) if app.include_router(pastor_router)
-
-OPENAI_API_KEY else None
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 MEMORY_SESSIONS: Dict[str, Dict[str, Any]] = {}
 MEMORY_PROFILES: Dict[str, Dict[str, Any]] = {}
@@ -150,16 +144,10 @@ async def status():
         "version":    "8.0.0-full",
         "status":     "online",
         "capabilities": {
-            "chat":       bool(app.include_router(pastor_router)
-
-OPENAI_API_KEY),
+            "chat":       bool(OPENAI_API_KEY),
             "voice":      bool(ELEVENLABS_API_KEY),
-            "images":     bool(app.include_router(pastor_router)
-
-OPENAI_API_KEY),
-            "transcribe": bool(app.include_router(pastor_router)
-
-OPENAI_API_KEY),
+            "images":     bool(OPENAI_API_KEY),
+            "transcribe": bool(OPENAI_API_KEY),
             "memory":     True,
             "uploads":    True,
         },
@@ -188,17 +176,11 @@ async def health():
         "version": "8.0.0-full",
         "render": "online",
         "fastapi": "online",
-        "openai_configured":    bool(app.include_router(pastor_router)
-
-OPENAI_API_KEY),
+        "openai_configured":    bool(OPENAI_API_KEY),
         "elevenlabs_configured": bool(ELEVENLABS_API_KEY),
-        "image_generation":     "ready" if app.include_router(pastor_router)
-
-OPENAI_API_KEY else "needs_api_key",
+        "image_generation":     "ready" if OPENAI_API_KEY else "needs_api_key",
         "voice_synthesis":      "ready" if ELEVENLABS_API_KEY else "needs_api_key",
-        "whisper_transcription": "ready" if app.include_router(pastor_router)
-
-OPENAI_API_KEY else "needs_api_key",
+        "whisper_transcription": "ready" if OPENAI_API_KEY else "needs_api_key",
         "multipart_uploads":    "ready",
         "cors_origins":         len(_CORS_ALLOWED),
         "time": datetime.now(timezone.utc).isoformat()
@@ -215,9 +197,7 @@ async def chat(payload: ChatRequest):
             "success": True,
             "mode": "fallback",
             "reply": f"TerrellOS received your message: {payload.message}",
-            "note": "app.include_router(pastor_router)
-
-OPENAI_API_KEY is not configured yet."
+            "note": "OPENAI_API_KEY is not configured yet."
         }
 
     try:
@@ -403,9 +383,7 @@ async def memory_transcribe(file: UploadFile = File(...)):
         return {
             "success": False,
             "transcript": None,
-            "note": "app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured — Whisper transcription unavailable.",
+            "note": "OPENAI_API_KEY not configured — Whisper transcription unavailable.",
             "filename": file.filename,
             "size": len(audio_bytes),
         }
@@ -551,9 +529,7 @@ async def images_generate(payload: ImageGenerateRequest):
         raise HTTPException(status_code=400, detail="prompt is required")
 
     if not openai_client:
-        raise HTTPException(status_code=500, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
 
     # Safety-enhanced prompt for spiritual/memorial context
     enhanced_prompt = (
@@ -618,9 +594,7 @@ async def companion_respond(payload: CompanionRequest):
             "success": True,
             "mode": "fallback",
             "reply": f"Heavenly Eternal Echo heard you: {payload.message}",
-            "note": "app.include_router(pastor_router)
-
-OPENAI_API_KEY is not configured yet."
+            "note": "OPENAI_API_KEY is not configured yet."
         }
 
     try:
@@ -759,9 +733,7 @@ async def admin_stats():
         "profiles": len(MEMORY_PROFILES),
         "uploads": len(UPLOADS),
         "consents": len(CONSENTS),
-        "openai_configured": bool(app.include_router(pastor_router)
-
-OPENAI_API_KEY),
+        "openai_configured": bool(OPENAI_API_KEY),
         "elevenlabs_configured": bool(ELEVENLABS_API_KEY),
         "routes_live": [
             "/",
@@ -821,9 +793,7 @@ SERMON_STORE: Dict[str, Dict[str, Any]] = {}
 def _gpt(system: str, user: str, max_tokens: int = 1200, temperature: float = 0.75) -> str:
     """Internal helper — single GPT-4o call with error fallback."""
     if not openai_client:
-        return "[AI not configured — add app.include_router(pastor_router)
-
-OPENAI_API_KEY to Render environment]"
+        return "[AI not configured — add OPENAI_API_KEY to Render environment]"
     try:
         resp = openai_client.chat.completions.create(
             model="gpt-4o",
@@ -853,9 +823,7 @@ async def generate_sermon(payload: SermonGenerateRequest):
     Each stage builds on the previous — produces 3,000–5,000 word output.
     """
     if not openai_client:
-        raise HTTPException(status_code=503, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
     scripture  = payload.scripture.strip()
     topic      = payload.topic or scripture
@@ -1043,9 +1011,7 @@ async def analyze_sermon(payload: SermonAnalyzeRequest):
     file_url = payload.file_url or ""
 
     if not openai_client:
-        raise HTTPException(status_code=503, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
     SYS = (
         "You are a theological content analyst. Analyze the sermon and extract: "
@@ -1704,9 +1670,7 @@ A one-paragraph summary students can take home.
 async def martyr_study(payload: MartyrStudyRequest):
     """Full AI study for any Christian martyr or persecuted believer."""
     if not openai_client:
-        raise HTTPException(status_code=503, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
     SYS = (
         "You are a Christian historian and pastor specializing in church history, martyrology, "
@@ -1733,9 +1697,7 @@ OPENAI_API_KEY not configured")
 async def black_christian_history_study(payload: BlackChristianHistoryRequest):
     """Full AI study for any figure in Black Christian history."""
     if not openai_client:
-        raise HTTPException(status_code=503, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
     SYS = (
         "You are a historian and theologian specializing in Black Christian history — "
@@ -1768,9 +1730,7 @@ async def christian_history_search(payload: HistorySearchRequest):
     century, theology, persecution type, race/ethnicity, church era, or ministry type.
     """
     if not openai_client:
-        raise HTTPException(status_code=503, detail="app.include_router(pastor_router)
-
-OPENAI_API_KEY not configured")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY not configured")
 
     filters = []
     if payload.denomination:   filters.append(f"denomination: {payload.denomination}")
