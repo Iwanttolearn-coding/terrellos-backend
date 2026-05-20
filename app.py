@@ -20,8 +20,19 @@ app = FastAPI(
 # ── CORS — env-driven allowlist ────────────────────────────────────────────
 _CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
+    # TerrellOS (founder platform)
+    "https://app.tm-dezigns.com",
+    # Pastor AI Connect
+    "https://pastoraiconnect.com",
     "https://pastor-ai-connect.pages.dev",
-    "https://app.tm-dezigns.org",
+    # Heavenly Eternal Echoes
+    "https://heavenlyeternalechoes.com",
+    # Local dev
+    "http://localhost:5173",
+    "http://localhost:3000",
+] or [
+    "https://pastor-ai-connect.pages.dev",
+    "https://app.tm-dezigns.com",
     "http://localhost:5173",
     "http://localhost:3000",
 ]
