@@ -100,8 +100,7 @@ async def generate_tattoo(payload: TattooGenerateRequest):
             model="dall-e-3",
             prompt=enhanced_prompt,
             size=payload.size,
-            quality=payload.quality,
-            style="vivid" if payload.style != "stencil" else "natural",
+            quality=payload.quality if payload.style != "stencil" else "natural",
             n=1,
         )
         return {
@@ -132,7 +131,6 @@ async def generate_outline(payload: TattooOutlineRequest):
             prompt=stencil_prompt,
             size=payload.size,
             quality="hd",
-            style="natural",
             n=1,
         )
         return {
@@ -160,8 +158,7 @@ async def generate_variations(payload: TattooVariationRequest):
         try:
             resp = client.images.generate(
                 model="dall-e-3", prompt=enhanced,
-                size="1024x1024", quality="standard",
-                style="natural" if style == "stencil" else "vivid", n=1,
+                size="1024x1024", quality="standard" if style == "stencil" else "vivid", n=1,
             )
             results.append({
                 "style": style,
@@ -221,8 +218,7 @@ async def upscale_tattoo(payload: UpscaleRequest):
     try:
         resp = client.images.generate(
             model="dall-e-3", prompt=enhanced,
-            size=payload.size, quality="hd",
-            style="vivid", n=1,
+            size=payload.size, quality="hd", n=1,
         )
         return {
             "success": True,
