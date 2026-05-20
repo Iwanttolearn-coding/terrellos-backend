@@ -20,18 +20,16 @@ app = FastAPI(
 # ── CORS — env-driven allowlist ────────────────────────────────────────────
 _CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
+    "https://pastor-ai-connect.pages.dev",
     "https://app.tm-dezigns.org",
-    "https://tm-dezigns.org",
-    "https://terrellos-frontend.vercel.app",
-    "http://localhost:3000",
     "http://localhost:5173",
-    "http://localhost:8080",
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ALLOWED,
-    allow_origin_regex=r"https://.*\.vercel\.app",   # catch all Vercel preview URLs
+    allow_origin_regex=r"https://.*\.pages\.dev",   # catch all Vercel preview URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,7 +43,7 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL",    "eleven_multilingual_v2")
 WHISPER_MODEL       = os.getenv("WHISPER_MODEL",       "whisper-1")
 IMAGE_MODEL         = os.getenv("IMAGE_MODEL",         "dall-e-3")
-FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://heavenlyeternalecho.com")
+FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://pastor-ai-connect.pages.dev")
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
