@@ -20,18 +20,24 @@ app = FastAPI(
 # ── CORS — env-driven allowlist ────────────────────────────────────────────
 _CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] or [
+    "https://app.tm-dezigns.com",
+    "https://pastoraiconnect.com",
+    "https://heavenlyeternalechoes.com",
+    "http://localhost:5173",
+    "http://localhost:3000",
+] or [
     # TerrellOS (founder platform)
     "https://app.tm-dezigns.com",
     # Pastor AI Connect
     "https://pastoraiconnect.com",
-    "https://pastor-ai-connect.pages.dev",
+    "https://pastoraiconnect.com",
     # Heavenly Eternal Echoes
     "https://heavenlyeternalechoes.com",
     # Local dev
     "http://localhost:5173",
     "http://localhost:3000",
 ] or [
-    "https://pastor-ai-connect.pages.dev",
+    "https://pastoraiconnect.com",
     "https://app.tm-dezigns.com",
     "http://localhost:5173",
     "http://localhost:3000",
@@ -40,7 +46,7 @@ _CORS_ALLOWED = [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()] o
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ALLOWED,
-    allow_origin_regex=r"https://.*\.pages\.dev",   # catch all Vercel preview URLs
+    # No wildcard origins — production domains only
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,7 +60,7 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL",    "eleven_multilingual_v2")
 WHISPER_MODEL       = os.getenv("WHISPER_MODEL",       "whisper-1")
 IMAGE_MODEL         = os.getenv("IMAGE_MODEL",         "dall-e-3")
-FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://pastor-ai-connect.pages.dev")
+FRONTEND_URL        = os.getenv("FRONTEND_URL",        "https://pastoraiconnect.com")
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
