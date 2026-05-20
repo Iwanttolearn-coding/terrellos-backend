@@ -63,7 +63,8 @@ async def bible_study(req: SimpleRequest):
 
 @router.post("/devotional")
 async def devotional(req: SimpleRequest):
-    result = ai(f"Write a daily devotional on: {req.topic or req.scripture or 'God\\'s grace'}. Include scripture, reflection, prayer, and a challenge.")
+    topic_text = req.topic or req.scripture or "God's grace"
+    result = ai(f"Write a daily devotional on: {topic_text}. Include scripture, reflection, prayer, and a challenge.")
     return {"success": True, "content": result}
 
 @router.post("/martyr-study")
