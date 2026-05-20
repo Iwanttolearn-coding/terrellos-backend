@@ -33,10 +33,11 @@ async def generate_image(payload: ImageGenerateRequest):
     try:
         resp = client.images.generate(
             model="dall-e-3", prompt=payload.prompt,
-            size=payload.size, quality=payload.quality,
-            style=payload.style, n=payload.n,
+            size=payload.size, quality=payload.quality or "standard",
+            n=1,
         )
-        return {"success": True, "images": [{"url": img.url} for img in resp.data],
+        image_url = resp.data[0].url if resp.data else None
+        return {"success": True, "image_url": image_url, "images": [{"url": img.url} for img in resp.data],
                 "prompt": payload.prompt}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -49,7 +50,7 @@ async def memorial_image(payload: ImageGenerateRequest):
     try:
         resp = client.images.generate(
             model="dall-e-3", prompt=enhanced_prompt,
-            size=payload.size, quality="hd", style="natural", n=1,
+            size=payload.size or "1024x1024", quality="hd", n=1,
         )
         return {"success": True, "images": [{"url": img.url} for img in resp.data],
                 "type": "memorial"}
