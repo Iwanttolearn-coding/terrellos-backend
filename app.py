@@ -24,6 +24,8 @@ from routers.design  import router as design_router
 from routers.founder import router as founder_router
 from routers.admin   import router as admin_router
 from routers.uploads import router as uploads_router
+from routers.tattoo  import router as tattoo_router
+from routers.gallery import router as gallery_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -32,7 +34,7 @@ APP_REGISTRY = {
         "domain": "app.tm-dezigns.com",
         "description": "Universal AI Operating System",
         "theme": "purple",
-        "modules": ["core","memory","voice","pastor","echo","design","founder","admin","uploads"],
+        "modules": ["core","memory","voice","pastor","echo","design","founder","admin","uploads","tattoo","gallery"],
     },
     "pastor-ai-connect": {
         "name": "Pastor AI Connect",
@@ -53,7 +55,7 @@ APP_REGISTRY = {
         "domain": "allaroundcustoms.com",
         "description": "AI DTF Print Platform",
         "theme": "orange",
-        "modules": ["core","design","uploads"],
+        "modules": ["core","design","uploads","tattoo","gallery"],
     },
     "kindred-love-birds": {
         "name": "Kindred Love Birds",
@@ -96,7 +98,7 @@ def get_founder_override(email: Optional[str]) -> Optional[Dict]:
 # ── FastAPI init ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="TerrellOS Orchestration Core",
-    version="9.0.0-orchestration",
+    version="9.1.0-creator-studio",
     description="Universal AI OS — Powers entire TM Designs ecosystem",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -148,6 +150,8 @@ app.include_router(design_router)
 app.include_router(founder_router)
 app.include_router(admin_router)
 app.include_router(uploads_router)
+app.include_router(tattoo_router)
+app.include_router(gallery_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
@@ -163,7 +167,7 @@ async def root(request: Request):
     return {
         "success": True,
         "service": "TerrellOS Orchestration Core",
-        "version": "9.0.0-orchestration",
+        "version": "9.1.0-creator-studio",
         "resolved_app": cfg["name"],
         "app_id": app_id,
         "status": "online",
@@ -179,7 +183,7 @@ async def health(request: Request):
     return {
         "success": True,
         "status": "healthy",
-        "version": "9.0.0-orchestration",
+        "version": "9.1.0-creator-studio",
         "app_id": app_id,
         "fastapi": "online",
         "openai_configured": bool(OPENAI_API_KEY),
@@ -248,7 +252,7 @@ async def status(request: Request):
     cfg = APP_REGISTRY.get(app_id, APP_REGISTRY["terrellos"])
     return {
         "service": cfg["name"],
-        "version": "9.0.0-orchestration",
+        "version": "9.1.0-creator-studio",
         "status": "online",
         "app_id": app_id,
         "capabilities": {
