@@ -1,22 +1,31 @@
 """
-/v1/pastor/* — Sermon, Bible study, theology, discipleship, church history
+/v1/pastor/* — Full sermon generation, Bible study, theology, discipleship
+Pastor AI Connect — production-grade pastoral AI
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from openai import OpenAI
-import os
+import os, json
 
 router = APIRouter(prefix="/v1/pastor", tags=["Pastor AI"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-def ai(prompt: str, max_tokens: int = 3500, model: str = "gpt-4o") -> str:
+FOUNDERS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+
+PASTOR_SYSTEM = """You are Pastor AI — a biblical scholar, seminary professor, ordained pastor, and Spirit-filled counselor.
+
+STANDARDS:
+- Never give shallow, generic, or one-paragraph responses.
+- Ground every point in specific Scripture (book, chapter, verse, full citation).
+- Write with pastoral warmth, theological precision, and practical wisdom.
+- Each response must feel like it came from a real pastor who prepared deeply."""
+
+def ai(prompt: str, max_tokens: int = 4000, model: str = "gpt-4o", system_extra: str = "") -> str:
     if not client:
         return "OpenAI not configured. Please add OPENAI_API_KEY to backend secrets."
-    system = """You are Pastor AI — a biblical scholar, seminary professor, and ordained pastor.
-Always give detailed, scripturally grounded, pastorally warm responses.
-Never give vague one-paragraph answers. Always include Scripture references, context, and practical application."""
+    system = PASTOR_SYSTEM + (("\n\n" + system_extra) if system_extra else "")
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -24,9 +33,11 @@ Never give vague one-paragraph answers. Always include Scripture references, con
             {"role": "user",   "content": prompt}
         ],
         max_tokens=max_tokens,
-        temperature=0.7,
+        temperature=0.75,
     )
-    return resp.choices[0].message.content
+    return resp.choices[0].message.content.strip()
+
+# ── Request models ────────────────────────────────────────────────────────────
 
 class SermonRequest(BaseModel):
     scripture: Optional[str] = ""
@@ -35,6 +46,9 @@ class SermonRequest(BaseModel):
     denomination: Optional[str] = ""
     audience: Optional[str] = ""
     duration: Optional[str] = "30 minutes"
+    style: Optional[str] = ""           # pentecostal | baptist | nondenominational | youth | evangelistic | prophetic | teaching | conference
+    bibleVersion: Optional[str] = "NIV"
+    generateExtras: Optional[bool] = True
 
 class SimpleRequest(BaseModel):
     topic: Optional[str] = ""
@@ -42,6 +56,7 @@ class SimpleRequest(BaseModel):
     name: Optional[str] = ""
     question: Optional[str] = ""
     denomination: Optional[str] = ""
+    bibleVersion: Optional[str] = "NIV"
 
 class MartyrStudyRequest(BaseModel):
     figure_name: str
@@ -56,160 +71,324 @@ class HistorySearchRequest(BaseModel):
     query: str
     category: Optional[str] = ""
 
+# ── Sermon endpoint ───────────────────────────────────────────────────────────
+
 @router.post("/sermon")
 async def sermon(req: SermonRequest):
-    ref = req.scripture or req.topic or "John 3:16"
-    denom = req.denomination or "Non-denominational evangelical"
-    audience = req.audience or "general congregation"
-    duration = req.duration or "30 minutes"
-    prompt = f"""Generate a COMPLETE, DETAILED sermon outline on: {ref}
-Sermon type: {req.sermonType}
-Denomination/tradition: {denom}
-Target audience: {audience}
-Approximate duration: {duration}
+    ref        = req.scripture or req.topic or "John 3:16"
+    denom      = req.denomination or "Non-denominational evangelical"
+    audience   = req.audience or "general congregation"
+    duration   = req.duration or "30 minutes"
+    style      = req.style or req.sermonType or "expository"
+    bible_ver  = req.bibleVersion or "NIV"
 
-Return as structured JSON with these exact fields:
-{{
-  "title": "...",
-  "subtitle": "...",
-  "scripture": "...",
-  "opening_hook": "A relatable story, illustration, or appropriate humor to open",
-  "introduction": "Full introduction paragraph",
-  "key_points": [
-    {{"point": "...", "scripture": "...", "explanation": "...", "illustration": "..."}}
-  ],
-  "applications": ["practical application 1", "practical application 2", "practical application 3"],
-  "altar_call": "Full altar call / invitation text",
-  "closing_prayer": "Full closing prayer text",
-  "small_group_questions": ["question 1", "question 2", "question 3", "question 4", "question 5"],
-  "discipleship_challenge": "Weekly challenge for congregation",
-  "additional_scriptures": ["verse 1", "verse 2"],
-  "historical_context": "Brief historical/church context",
-  "denominational_notes": "Any denomination-specific notes"
-}}"""
-    result = ai(prompt)
-    return {"success": True, "content": result}
+    style_instructions = {
+        "pentecostal":       "Use Spirit-filled, charismatic language. Include references to the Holy Spirit, spiritual gifts, and anointing. Energetic and emotionally engaging.",
+        "baptist":           "Theologically precise, Scripture-saturated. Strong emphasis on salvation, grace, and the authority of the Word.",
+        "youth":             "Relatable language for teens/young adults. Pop culture references, short punchy points, heavy application.",
+        "evangelistic":      "Every point leads to the Gospel. Multiple calls for salvation. Urgency and love for the lost.",
+        "prophetic":         "Prophetic declarations, vision, and calling. Bold proclamation. Future orientation.",
+        "teaching":          "Academic, detailed, systematic. Word studies, original language references, deep theology.",
+        "conference":        "Full conference-length sermon. Extended illustrations, multiple sub-points, sweeping theological vision.",
+        "nondenominational": "Broadly evangelical. Accessible, warm, practical, culturally aware.",
+    }.get(style.lower().replace(" ","").replace("-",""), "")
+
+    prompt = f"""Generate a COMPLETE, FULL-LENGTH, PRODUCTION-QUALITY sermon on: {ref}
+
+Sermon parameters:
+- Style: {style}
+- Denomination/tradition: {denom}
+- Target audience: {audience}
+- Approximate duration: {duration}
+- Bible version: {bible_ver}
+{f"- Style instructions: {style_instructions}" if style_instructions else ""}
+
+This is NOT a summary or outline. This is a FULLY WRITTEN, PREACHABLE sermon. Write every word as if this will be preached to a real congregation this Sunday. Every point must be fully developed — no placeholders, no "(add illustration here)".
+
+REQUIRED STRUCTURE — do not skip any section:
+
+**SERMON TITLE**
+[Powerful, memorable title]
+[Optional subtitle/tagline]
+
+**OPENING HOOK**
+[2-3 paragraphs: Start with a relatable story, Christian humor, surprising statistic, rhetorical question, or testimony that immediately captures attention and connects to the theme]
+
+**FOUNDATIONAL SCRIPTURE**
+[Print the FULL TEXT of the main passage in {bible_ver}]
+
+**INTRODUCTION**
+[3-4 paragraphs covering: historical/biblical setting of the passage, why this topic matters urgently today, what the congregation will discover, emotional/spiritual setup for the message]
+
+**SERMON POINT 1: [Compelling Title]**
+Scripture: [Specific verse]
+[Full explanation — minimum 3-4 paragraphs with: what this verse means, historical/cultural context, theological significance, word study if helpful, how it connects to the main theme]
+Real-life illustration: [Specific story, example, or analogy]
+Application: [Concrete, specific ways to apply this point this week]
+Pastoral encouragement: [Warm, personal pastoral note]
+
+**SERMON POINT 2: [Compelling Title]**
+[Same structure — full paragraphs, Scripture, illustration, application]
+
+**SERMON POINT 3: [Compelling Title]**
+[Same structure]
+
+**SERMON POINT 4: [Compelling Title]**
+[Same structure]
+
+**SERMON POINT 5: [Compelling Title]**
+[Same structure]
+
+**SERMON POINT 6: [Compelling Title]** (include if message naturally supports it)
+[Same structure]
+
+**CROSS-REFERENCES**
+[List 5-8 supporting Scriptures with brief notes on each one and how they reinforce the sermon]
+
+**APPLICATION SECTION**
+[How do we live this out? Give 5-7 SPECIFIC, PRACTICAL action steps — not vague suggestions. Family applications, work applications, spiritual disciplines, relationship applications]
+
+**SPIRITUAL REFLECTION**
+[3-4 paragraphs of conviction, encouragement, and challenge. This is the emotional/spiritual climax of the sermon. Speak directly to the congregation's heart. Address doubt, fear, struggle, and call them to deeper faith.]
+
+**ALTAR CALL / INVITATION**
+[Full, written-out altar call — include: invitation to salvation, invitation to recommitment, invitation to healing, invitation to prayer. Write this as if you are speaking it live. Warm, urgent, loving.]
+
+**CLOSING PRAYER**
+[Full pastoral prayer, 3-4 paragraphs, directly connected to the sermon theme. Address God directly. Include thanksgiving, confession, petition for the congregation, and declaration of faith.]"""
+
+    content = ai(prompt, max_tokens=4000)
+
+    extras = {}
+    if req.generateExtras:
+        # Generate supplementary materials in parallel style (single call to save tokens)
+        extras_prompt = f"""Based on this sermon topic "{ref}" (style: {style}, audience: {audience}), generate ALL of the following in one response:
+
+---SMALL_GROUP_QUESTIONS---
+[5 deep, open-ended discussion questions that can't be answered yes/no. Questions that create real conversation about the sermon topic.]
+
+---FILL_IN_THE_BLANK_NOTES---
+[10 fill-in-the-blank statements using key phrases from the sermon theme. Format: "Faith is not the absence of _______ but the presence of _______." Leave 1-2 blanks per statement.]
+
+---KEY_TAKEAWAYS---
+[5 memorable one-line takeaways that summarize the core truths of the sermon. These should be quotable and share-worthy.]
+
+---SOCIAL_MEDIA_SUMMARY---
+[3 social media posts: 1 for Twitter/X (under 280 chars), 1 for Instagram (with hashtags), 1 for Facebook (2-3 sentences). All based on the sermon theme.]
+
+---PRAYER_POINTS---
+[7 specific prayer points for the congregation to pray during the week, connected to the sermon theme.]
+
+---YOUTH_ADAPTATION---
+[A 3-4 sentence summary of how to adapt this sermon for a youth audience, plus 2 youth-specific discussion questions.]"""
+
+        extras_content = ai(extras_prompt, max_tokens=1800)
+
+        # Parse sections
+        def extract_section(text, marker):
+            start = text.find(f"---{marker}---")
+            if start == -1:
+                return ""
+            start = start + len(f"---{marker}---")
+            next_marker = text.find("---", start)
+            return text[start:next_marker if next_marker > -1 else len(text)].strip()
+
+        extras = {
+            "small_group_questions": extract_section(extras_content, "SMALL_GROUP_QUESTIONS"),
+            "fill_in_the_blank":     extract_section(extras_content, "FILL_IN_THE_BLANK_NOTES"),
+            "key_takeaways":         extract_section(extras_content, "KEY_TAKEAWAYS"),
+            "social_media":          extract_section(extras_content, "SOCIAL_MEDIA_SUMMARY"),
+            "prayer_points":         extract_section(extras_content, "PRAYER_POINTS"),
+            "youth_adaptation":      extract_section(extras_content, "YOUTH_ADAPTATION"),
+        }
+
+    return {
+        "success": True,
+        "content": content,
+        "scripture": ref,
+        "style": style,
+        "denomination": denom,
+        "audience": audience,
+        "bible_version": bible_ver,
+        "extras": extras,
+        "word_count": len(content.split()),
+    }
+
+# ── Bible Study endpoint ──────────────────────────────────────────────────────
 
 @router.post("/bible-study")
 async def bible_study(req: SimpleRequest):
     ref = req.scripture or req.topic or "John 3:16"
-    prompt = f"""Create a COMPREHENSIVE Bible study guide for: {ref}
+    bible_ver = req.bibleVersion or "NIV"
+
+    prompt = f"""Create a COMPREHENSIVE, CHURCH-READY Bible study guide for: {ref}
+Bible version: {bible_ver}
 Denomination context: {req.denomination or "broadly evangelical"}
 
-Include ALL of the following sections:
-1. TOPIC OVERVIEW — What this passage/topic is about
-2. SCRIPTURE READING — The full passage text
-3. HISTORICAL BACKGROUND — Time period, author, audience, cultural context
-4. VERSE-BY-VERSE COMMENTARY — Detailed notes on each verse
-5. THEOLOGICAL THEMES — Key doctrines and themes
-6. DISCUSSION QUESTIONS — 6-8 open-ended questions for group discussion
-7. FILL-IN-THE-BLANK — 5 completion questions with answers
-8. MULTIPLE CHOICE — 5 questions with 4 options each, answer key
-9. PERSONAL REFLECTION — Deep personal application prompt
-10. PRAYER — Closing prayer for the study group
-11. TEACHER NOTES — Tips for leading this study, common questions, pitfalls
+Include ALL of the following — fully written, not placeholders:
 
-Make it rich, detailed, and ready to use in a real church setting."""
-    result = ai(prompt)
-    return {"success": True, "content": result}
+1. TOPIC OVERVIEW (2-3 paragraphs introducing the study)
+
+2. SCRIPTURE READING
+[Full text of the passage in {bible_ver}]
+
+3. HISTORICAL BACKGROUND
+[Author, date, audience, cultural context, why this was written, 3-4 paragraphs]
+
+4. VERSE-BY-VERSE COMMENTARY
+[Detailed notes on every verse or section — include word studies, original language notes where helpful]
+
+5. THEOLOGICAL THEMES
+[3-4 major themes with full explanations and cross-references]
+
+6. DISCUSSION QUESTIONS (8 open-ended questions for group discussion)
+
+7. FILL-IN-THE-BLANK (8 completion questions with answer key)
+
+8. MULTIPLE CHOICE (6 questions with 4 options each, and answer key at the end)
+
+9. PERSONAL REFLECTION
+[Deep reflection prompt, 2-3 paragraphs for individual application]
+
+10. CLOSING PRAYER (full group prayer for the study)
+
+11. TEACHER/LEADER NOTES
+[Tips for leading this study, common questions that arise, theological pitfalls to address, suggested time breakdown]
+
+Make it rich, detailed, and ready to use in a real church Bible study setting."""
+
+    content = ai(prompt, max_tokens=4000)
+    return {"success": True, "content": content, "word_count": len(content.split())}
+
+# ── Devotional endpoint ───────────────────────────────────────────────────────
 
 @router.post("/devotional")
 async def devotional(req: SimpleRequest):
     topic_text = req.topic or req.scripture or "God's grace"
-    prompt = f"""Write a COMPLETE daily devotional on: {topic_text}
+    bible_ver  = req.bibleVersion or "NIV"
 
-Structure:
-1. TITLE — Compelling devotional title
-2. SCRIPTURE — Key verse (full text)
-3. OPENING STORY — Brief relatable story or illustration (2-3 sentences)
-4. REFLECTION — Deep reflection on the scripture and its meaning (3-4 paragraphs)
-5. BIBLICAL CONTEXT — Brief historical/textual context
-6. LIFE APPLICATION — Specific, practical ways to apply this today
-7. CHALLENGE — One concrete action to take today
-8. PRAYER — Full prayer (3-4 sentences)
-9. ADDITIONAL READING — 2-3 related scriptures for further study
+    prompt = f"""Write a COMPLETE, DEEPLY PERSONAL daily devotional on: {topic_text}
+Bible version: {bible_ver}
 
-Write as if speaking directly to the reader. Be warm, personal, and encouraging."""
-    result = ai(prompt)
-    return {"success": True, "content": result}
+Structure (write every section fully — no shortcuts):
+
+1. TITLE — Compelling, memorable devotional title
+2. SCRIPTURE — Key verse (full text in {bible_ver})
+3. OPENING STORY — Brief relatable personal story or illustration (2-3 sentences that immediately connect)
+4. REFLECTION — Deep reflection on the scripture and its meaning (4-5 paragraphs — theological, emotional, and personal)
+5. BIBLICAL CONTEXT — Author's intent, historical setting, original audience (2-3 paragraphs)
+6. LIFE APPLICATION — 4-5 SPECIFIC, CONCRETE ways to apply this today (not vague)
+7. CHALLENGE — One clear, measurable action to take today
+8. PRAYER — Full personal prayer (4-5 sentences, conversational, heartfelt)
+9. ADDITIONAL READING — 3-4 related scriptures for further study with brief notes
+
+Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
+
+    content = ai(prompt, max_tokens=2500)
+    return {"success": True, "content": content, "word_count": len(content.split())}
+
+# ── Martyr Study ──────────────────────────────────────────────────────────────
 
 @router.post("/martyr-study")
 async def martyr_study(req: MartyrStudyRequest):
-    result = ai(f"""Provide a detailed study of Christian martyr: {req.figure_name}
+    content = ai(f"""Provide a detailed historical and theological study of Christian martyr: {req.figure_name}
+
 Include:
-1. Historical background and life story
-2. Faith journey and conversion
-3. Persecution details and circumstances of martyrdom
-4. Theological significance and what they died for
-5. Impact on the early church
-6. Legacy for modern Christians
-7. Key quotes or writings (if any)
-8. Discussion questions for study groups
-9. Prayer of remembrance""")
-    return {"success": True, "figure": req.figure_name, "content": result}
+1. Historical biography and life story
+2. Conversion and faith journey
+3. Ministry and theological contributions
+4. Persecution: circumstances, accusers, and charges
+5. The martyrdom: what happened, how they responded
+6. Theological significance — what did they die for, and why does it matter?
+7. Impact on the early church and church history
+8. Legacy for modern Christians
+9. Key quotes or writings (if any survive)
+10. Discussion questions for study groups
+11. Prayer of remembrance""", max_tokens=3000)
+    return {"success": True, "figure": req.figure_name, "content": content}
+
+# ── Church History ────────────────────────────────────────────────────────────
 
 @router.post("/church-history")
 async def church_history(req: BlackChristianHistoryRequest):
     query = f"{req.topic} {req.era} {req.region}".strip() or "African American Christian history"
-    result = ai(f"""Provide detailed historical analysis of: {query}
+    content = ai(f"""Provide a detailed historical analysis of: {query}
+
 Include:
-1. Overview and significance
-2. Key figures and their contributions
+1. Overview and why this history matters
+2. Key figures and their specific contributions
 3. Historical timeline of major events
-4. Theological contributions
+4. Theological contributions and distinctives
 5. Cultural and social impact
-6. Connection to broader church history
-7. Modern significance and legacy
-8. Discussion questions
-9. Recommended further reading""")
-    return {"success": True, "content": result}
+6. Resistance, suffering, and perseverance
+7. Connection to broader church and world history
+8. Modern significance and ongoing legacy
+9. Discussion questions
+10. Recommended further reading""", max_tokens=3000)
+    return {"success": True, "content": content}
+
+# ── Theology ──────────────────────────────────────────────────────────────────
 
 @router.post("/theology")
 async def theology(req: SimpleRequest):
-    result = ai(f"""Provide a THOROUGH theological analysis of: {req.topic or req.question}
+    content = ai(f"""Provide a thorough theological analysis of: {req.topic or req.question}
+
 Include:
-1. Biblical foundation — key scriptures
-2. Historical church perspective — how the church has understood this
-3. Major theological positions (Calvinist, Arminian, Catholic, etc. where relevant)
-4. Denominational variations
-5. Practical Christian application
-6. Common misconceptions or errors
-7. Pastoral guidance""")
-    return {"success": True, "content": result}
+1. Biblical foundation — all key scriptures with full citations
+2. Historical church perspective — how Christians throughout history have understood this
+3. Major theological positions (Calvinist, Arminian, Catholic, Eastern Orthodox, Pentecostal, etc.)
+4. Denominational variations and why they differ
+5. Word studies from original Hebrew/Greek where relevant
+6. Practical Christian application
+7. Common misconceptions or heresies to avoid
+8. Pastoral guidance for discussing this in a church context""", max_tokens=3000)
+    return {"success": True, "content": content}
+
+# ── Pastoral Counseling ───────────────────────────────────────────────────────
 
 @router.post("/counseling")
 async def pastoral_counseling(req: SimpleRequest):
-    result = ai(f"""Provide pastoral counseling guidance for: {req.topic or req.question}
-Include:
-1. Empathetic acknowledgment of the situation
-2. Scriptural foundation and comfort
-3. Practical steps forward
-4. When to refer to professional counseling (mental health, medical, legal)
-5. Prayer support
-6. Follow-up accountability suggestions
-7. Church community resources to recommend
+    content = ai(f"""Provide pastoral counseling guidance for: {req.topic or req.question}
 
-Always lead with compassion and Scripture. Never minimize real pain.""")
-    return {"success": True, "content": result}
+Include:
+1. Empathetic acknowledgment of the situation (lead with compassion)
+2. Scriptural foundation and comfort — multiple specific verses
+3. Theological framing — how does faith address this situation?
+4. Practical steps forward — specific, actionable, realistic
+5. When to refer to professional counseling (mental health, medical, legal)
+6. Prayer support — provide a written prayer
+7. Follow-up accountability suggestions
+8. Church community resources to recommend
+9. Encouragement for the long journey
+
+Always lead with compassion and Scripture. Never minimize real pain.""", max_tokens=2500)
+    return {"success": True, "content": content}
+
+# ── Discipleship ──────────────────────────────────────────────────────────────
 
 @router.post("/discipleship")
 async def discipleship(req: SimpleRequest):
-    result = ai(f"""Create a COMPLETE discipleship plan for: {req.topic or "new believers"}
+    content = ai(f"""Create a complete discipleship curriculum for: {req.topic or "new believers"}
+
 Include:
 1. Overview and discipleship goals
-2. Week-by-week curriculum (4-6 weeks)
-3. Scripture readings for each week
-4. Accountability questions
-5. Spiritual disciplines to practice
-6. Memorization verses
-7. Service/outreach component
-8. Assessment questions
-9. Graduation/completion next steps""")
-    return {"success": True, "content": result}
+2. Week-by-week curriculum (6 weeks minimum)
+   - Each week: theme, scripture, discussion questions, assignment, memory verse
+3. Spiritual disciplines to practice throughout
+4. Accountability questions for weekly check-ins
+5. Recommended books/resources
+6. Service/outreach component
+7. Assessment questions for measuring growth
+8. Graduation/completion next steps and celebration ideas""", max_tokens=3000)
+    return {"success": True, "content": content}
+
+# ── History Search ────────────────────────────────────────────────────────────
 
 @router.post("/history/search")
 async def history_search(req: HistorySearchRequest):
-    result = ai(f"""Research and provide detailed information about: {req.query}
+    content = ai(f"""Research and provide detailed information about: {req.query}
 Category: {req.category or "Christian history"}
-Include historical context, key figures, significance, and modern relevance.""")
-    return {"success": True, "content": result}
+
+Provide historical context, key figures, theological significance, and modern relevance.
+Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
+    return {"success": True, "content": content}
