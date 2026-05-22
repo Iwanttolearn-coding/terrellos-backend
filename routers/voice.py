@@ -102,3 +102,21 @@ async def list_voices():
     voices = [{"id": v["voice_id"], "name": v["name"],
                "labels": v.get("labels", {})} for v in data.get("voices", [])]
     return {"success": True, "voices": voices, "total": len(voices)}
+
+
+@router.get("/health")
+async def voice_health():
+    """Voice engine health check."""
+    import os
+    return {
+        "success":        True,
+        "status":         "online",
+        "elevenlabs_key": "configured" if os.getenv("ELEVENLABS_API_KEY") else "missing",
+        "elevenlabs_voice_id": os.getenv("ELEVENLABS_VOICE_ID", "not_set"),
+        "openai_key":     "configured" if os.getenv("OPENAI_API_KEY") else "missing",
+        "services": {
+            "tts":          bool(os.getenv("ELEVENLABS_API_KEY")),
+            "transcription":bool(os.getenv("OPENAI_API_KEY")),
+            "voice_list":   True,
+        }
+    }
