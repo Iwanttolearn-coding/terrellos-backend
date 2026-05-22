@@ -87,3 +87,16 @@ async def delete_upload(upload_id: str, user_id: str = ""):
         raise HTTPException(403, "Forbidden")
     del _STORE[upload_id]
     return {"success": True}
+
+
+@router.get("/health")
+async def uploads_health():
+    """Upload system health check."""
+    import os
+    return {
+        "success": True,
+        "status":  "online",
+        "max_file_size_mb": 50,
+        "supported_types": ["image/png","image/jpeg","image/webp","image/gif","application/pdf","image/svg+xml"],
+        "storage": "fly_volume",
+    }
