@@ -28,6 +28,7 @@ from routers.tattoo  import router as tattoo_router
 from routers.gallery import router as gallery_router
 from routers.auth    import router as auth_router
 from routers.system import router as system_router
+from routers.paypal  import router as paypal_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -156,6 +157,7 @@ app.include_router(tattoo_router)
 app.include_router(gallery_router)
 app.include_router(auth_router)
 app.include_router(system_router)
+app.include_router(paypal_router, prefix="/v1/paypal", tags=["PayPal Payments"])
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
