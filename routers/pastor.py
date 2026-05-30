@@ -8,6 +8,8 @@ from typing import Optional, List
 from openai import OpenAI
 import os, json
 
+from pastor_db import save_sermon, save_bible_study, save_transcript, get_user_sermons, get_user_bible_studies, get_user_transcripts, delete_item
+
 router = APIRouter(prefix="/v1/pastor", tags=["Pastor AI"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
@@ -202,6 +204,17 @@ Pastoral encouragement: [Warm, personal pastoral note]
             "youth_adaptation":      extract_section(extras_content, "YOUTH_ADAPTATION"),
         }
 
+    # Auto-save sermon to Supabase
+    saved_id = await save_sermon(
+        user_id="anonymous",
+        title=f"Sermon: {ref}",
+        content=content,
+        scripture=ref,
+        tone=style,
+        denomination=denom,
+        sermon_length=duration,
+        sermon_json={"style": style, "audience": audience},
+    )
     return {
         "success": True,
         "content": content,
@@ -212,6 +225,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
         "bible_version": bible_ver,
         "extras": extras,
         "word_count": len(content.split()),
+        "saved_id": saved_id,
     }
 
 # ── Bible Study endpoint ──────────────────────────────────────────────────────
@@ -258,7 +272,17 @@ Include ALL of the following — fully written, not placeholders:
 Make it rich, detailed, and ready to use in a real church Bible study setting."""
 
     content = ai(prompt, max_tokens=4000)
-    return {"success": True, "content": content, "word_count": len(content.split())}
+    # Auto-save bible study to Supabase
+    topic_text = req.topic or req.scripture or "Bible Study"
+    saved_id = await save_bible_study(
+        user_id="anonymous",
+        title=f"Bible Study: {topic_text}",
+        content=content,
+        passage=req.scripture or "",
+        version=req.bibleVersion or "NIV",
+        topic=req.topic or "",
+    )
+    return {"success": True, "content": content, "word_count": len(content.split()), "saved_id": saved_id}
 
 # ── Devotional endpoint ───────────────────────────────────────────────────────
 
@@ -392,3 +416,32 @@ Category: {req.category or "Christian history"}
 Provide historical context, key figures, theological significance, and modern relevance.
 Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
     return {"success": True, "content": content}
+
+
+# ── Saved Content History ─────────────────────────────────────────────────────
+
+@router.get("/history/sermons")
+async def history_sermons(user_id: str = "anonymous", limit: int = 50):
+    items = await get_user_sermons(user_id, limit)
+    return {"success": True, "items": items, "count": len(items)}
+
+
+@router.get("/history/bible-studies")
+async def history_bible_studies(user_id: str = "anonymous", limit: int = 50):
+    items = await get_user_bible_studies(user_id, limit)
+    return {"success": True, "items": items, "count": len(items)}
+
+
+@router.get("/history/transcripts")
+async def history_transcripts(user_id: str = "anonymous", limit: int = 50):
+    items = await get_user_transcripts(user_id, limit)
+    return {"success": True, "items": items, "count": len(items)}
+
+
+@router.delete("/history/{table}/{item_id}")
+async def delete_history_item(table: str, item_id: str, user_id: str = "anonymous"):
+    allowed = {"pastor_sermons", "pastor_bible_studies", "pastor_transcripts", "pastor_recordings"}
+    if table not in allowed:
+        return {"success": False, "error": "Invalid table"}
+    deleted = await delete_item(table, item_id, user_id)
+    return {"success": deleted}
