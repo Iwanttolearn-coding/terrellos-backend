@@ -271,7 +271,7 @@ async def save_recording(
 
     try:
         audio_url = await _sb_upload_audio(
-            bucket="voice-recordings",
+            bucket="hee-voice-recordings",
             path=storage_path,
             audio_bytes=audio_bytes,
             content_type=audio.content_type or "audio/webm",
