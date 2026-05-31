@@ -221,3 +221,40 @@ async def delete_item(table: str, item_id: str, user_id: str) -> bool:
     except Exception as e:
         logger.warning("delete error: %s", e)
         return False
+
+async def save_generated_content(
+    user_id: str,
+    title: str,
+    content: str,
+    content_type: str = "devotional",  # devotional | counseling | discipleship | theology
+    topic: str = "",
+    scripture: str = "",
+) -> Optional[str]:
+    """Save devotional/counseling/discipleship/theology to pastor_transcripts with type tag."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    try:
+        data = {
+            "user_id": user_id,
+            "transcript_text": content,
+            "duration_sec": 0,
+            "language": "en",
+            "confidence": 1.0,
+            "source": content_type,
+            "title": title,
+            "topic": topic,
+            "scripture": scripture,
+        }
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(
+                f"{SUPABASE_URL}/rest/v1/pastor_transcripts",
+                headers=_headers(),
+                json=data,
+            )
+        if r.status_code in (200, 201):
+            rows = r.json()
+            return rows[0]["id"] if rows else None
+        return None
+    except Exception as e:
+        logger.warning("content save error (%s): %s", content_type, e)
+        return None

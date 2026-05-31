@@ -8,7 +8,7 @@ from typing import Optional, List
 from openai import OpenAI
 import os, json
 
-from pastor_db import save_sermon, save_bible_study, save_transcript, get_user_sermons, get_user_bible_studies, get_user_transcripts, delete_item
+from pastor_db import save_sermon, save_bible_study, save_transcript, save_generated_content, get_user_sermons, get_user_bible_studies, get_user_transcripts, delete_item
 
 router = APIRouter(prefix="/v1/pastor", tags=["Pastor AI"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -329,6 +329,8 @@ Structure (write every section fully — no shortcuts):
 Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
 
     content = ai(prompt, max_tokens=2500)
+    _uid2 = _email_from_request(request, req.email or "")
+    await save_generated_content(_uid2, f"Devotional: {req.scripture or req.topic or 'Daily Devotional'}", content, "devotional", topic=req.topic or "", scripture=req.scripture or "")
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Martyr Study ──────────────────────────────────────────────────────────────
@@ -386,6 +388,8 @@ Include:
 6. Practical Christian application
 7. Common misconceptions or heresies to avoid
 8. Pastoral guidance for discussing this in a church context""", max_tokens=3000)
+    _uid3 = _email_from_request(request, req.email or "")
+    await save_generated_content(_uid3, f"Theology: {req.topic or req.question or 'Study'}", content, "theology", topic=req.topic or "")
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Pastoral Counseling ───────────────────────────────────────────────────────
@@ -406,6 +410,8 @@ Include:
 9. Encouragement for the long journey
 
 Always lead with compassion and Scripture. Never minimize real pain.""", max_tokens=2500)
+    _uid4 = _email_from_request(request, req.email or "")
+    await save_generated_content(_uid4, f"Counseling: {req.topic or req.question or 'Session'}", content, "counseling", topic=req.topic or "")
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Discipleship ──────────────────────────────────────────────────────────────
@@ -424,6 +430,8 @@ Include:
 6. Service/outreach component
 7. Assessment questions for measuring growth
 8. Graduation/completion next steps and celebration ideas""", max_tokens=3000)
+    _uid5 = _email_from_request(request, req.email or "")
+    await save_generated_content(_uid5, f"Discipleship: {req.topic or 'Growth Plan'}", content, "discipleship", topic=req.topic or "")
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── History Search ────────────────────────────────────────────────────────────
