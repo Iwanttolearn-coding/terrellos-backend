@@ -17,12 +17,12 @@ router = APIRouter(tags=["PayPal Payments"])
 SANDBOX_URL = "https://api-m.sandbox.paypal.com"
 LIVE_URL    = "https://api-m.paypal.com"
 
-PAYPAL_CLIENT_ID     = os.getenv("PAYPAL_CLIENT_ID", "")
-PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
-PAYPAL_ENV           = os.getenv("PAYPAL_ENV", "sandbox").lower()
-HEE_FRONTEND_URL     = os.getenv("HEE_FRONTEND_URL", "https://heavenlyeternalecho.com")
+def _paypal_client_id():     return os.getenv("PAYPAL_CLIENT_ID", "")
+def _paypal_client_secret(): return os.getenv("PAYPAL_CLIENT_SECRET", "")
+def _paypal_env():           return os.getenv("PAYPAL_ENV", "live").lower()
+HEE_FRONTEND_URL = os.getenv("HEE_FRONTEND_URL", "https://heavenlyeternalecho.com")
 
-def _base(): return SANDBOX_URL if PAYPAL_ENV == "sandbox" else LIVE_URL
+def _base(): return SANDBOX_URL if _paypal_env() == "sandbox" else LIVE_URL
 def _now():  return datetime.now(timezone.utc).isoformat()
 
 # ── Plan catalog ──────────────────────────────────────────────────
@@ -41,12 +41,14 @@ HEE_PLANS = {
 
 # ── PayPal helpers ────────────────────────────────────────────────
 async def _get_token() -> str:
-    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+    cid = _paypal_client_id()
+    csec = _paypal_client_secret()
+    if not cid or not csec:
         raise RuntimeError("PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET not set in env")
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.post(
             f"{_base()}/v1/oauth2/token",
-            auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+            auth=(cid, csec),
             data={"grant_type": "client_credentials"},
             headers={"Accept": "application/json"},
         )
@@ -73,14 +75,14 @@ class CaptureOrderReq(BaseModel):
 async def hee_plans():
     return {
         "plans": HEE_PLANS,
-        "environment": PAYPAL_ENV,
-        "client_id": PAYPAL_CLIENT_ID[:20] + "..." if PAYPAL_CLIENT_ID else "",
+        "environment": _paypal_env(),
+        "client_id": _paypal_client_id()[:20] + "..." if _paypal_client_id() else "",
     }
 
 @router.get("/status")
 async def hee_paypal_status():
     return {
-        "environment": PAYPAL_ENV,
+        "environment": _paypal_env(),
         "client_id_set": bool(PAYPAL_CLIENT_ID),
         "secret_set": bool(PAYPAL_CLIENT_SECRET),
         "ready": bool(PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET),
