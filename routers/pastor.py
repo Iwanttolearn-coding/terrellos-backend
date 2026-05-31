@@ -2,7 +2,7 @@
 /v1/pastor/* — Full sermon generation, Bible study, theology, discipleship
 Pastor AI Connect — production-grade pastoral AI
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from openai import OpenAI
@@ -15,6 +15,23 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 FOUNDERS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+
+def _email_from_request(request: Request, body_email: str) -> str:
+    """Extract user email from body or Bearer token. Falls back to 'anonymous'."""
+    if body_email and body_email.strip():
+        return body_email.strip()
+    # Try to extract from Authorization header via auth token store
+    try:
+        from routers.auth import _TOKENS
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "").strip()
+        if token and token in _TOKENS:
+            return _TOKENS[token].get("email", "anonymous")
+    except Exception:
+        pass
+    return "anonymous"
+
+
 
 PASTOR_SYSTEM = """You are Pastor AI — a biblical scholar, seminary professor, ordained pastor, and Spirit-filled counselor.
 
@@ -80,7 +97,7 @@ class HistorySearchRequest(BaseModel):
 # ── Sermon endpoint ───────────────────────────────────────────────────────────
 
 @router.post("/sermon")
-async def sermon(req: SermonRequest):
+async def sermon(req: SermonRequest, request: Request):
     ref        = req.scripture or req.topic or "John 3:16"
     denom      = req.denomination or "Non-denominational evangelical"
     audience   = req.audience or "general congregation"
@@ -209,7 +226,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
         }
 
     # Auto-save sermon to Supabase
-    _uid = req.email or req.user_id or "anonymous"
+    _uid = _email_from_request(request, req.email or req.user_id or "")
     saved_id = await save_sermon(
         user_id=_uid,
         title=f"Sermon: {ref}",
@@ -236,7 +253,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
 # ── Bible Study endpoint ──────────────────────────────────────────────────────
 
 @router.post("/bible-study")
-async def bible_study(req: SimpleRequest):
+async def bible_study(req: SimpleRequest, request: Request):
     ref = req.scripture or req.topic or "John 3:16"
     bible_ver = req.bibleVersion or "NIV"
 
@@ -280,7 +297,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
     # Auto-save bible study to Supabase
     topic_text = req.topic or req.scripture or "Bible Study"
     saved_id = await save_bible_study(
-        user_id=req.email or req.user_id or "anonymous",
+        user_id=_email_from_request(request, req.email or req.user_id or ""),
         title=f"Bible Study: {topic_text}",
         content=content,
         passage=req.scripture or "",
@@ -292,7 +309,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
 # ── Devotional endpoint ───────────────────────────────────────────────────────
 
 @router.post("/devotional")
-async def devotional(req: SimpleRequest):
+async def devotional(req: SimpleRequest, request: Request):
     topic_text = req.topic or req.scripture or "God's grace"
     bible_ver  = req.bibleVersion or "NIV"
 
@@ -359,7 +376,7 @@ Include:
 # ── Theology ──────────────────────────────────────────────────────────────────
 
 @router.post("/theology")
-async def theology(req: SimpleRequest):
+async def theology(req: SimpleRequest, request: Request):
     content = ai(f"""Provide a thorough theological analysis of: {req.topic or req.question}
 
 Include:
@@ -376,7 +393,7 @@ Include:
 # ── Pastoral Counseling ───────────────────────────────────────────────────────
 
 @router.post("/counseling")
-async def pastoral_counseling(req: SimpleRequest):
+async def pastoral_counseling(req: SimpleRequest, request: Request):
     content = ai(f"""Provide pastoral counseling guidance for: {req.topic or req.question}
 
 Include:
@@ -396,7 +413,7 @@ Always lead with compassion and Scripture. Never minimize real pain.""", max_tok
 # ── Discipleship ──────────────────────────────────────────────────────────────
 
 @router.post("/discipleship")
-async def discipleship(req: SimpleRequest):
+async def discipleship(req: SimpleRequest, request: Request):
     content = ai(f"""Create a complete discipleship curriculum for: {req.topic or "new believers"}
 
 Include:
