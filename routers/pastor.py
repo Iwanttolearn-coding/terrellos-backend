@@ -472,3 +472,14 @@ async def delete_history_item(table: str, item_id: str, email: str = "", user_id
 
 
 
+
+# --- DEBUG ENDPOINT (remove after verification) ---
+@router.get("/debug/auth")
+async def debug_auth(request: Request):
+    from routers.auth import email_from_request as _auth_email
+    email = _auth_email(request)
+    auth_header = request.headers.get("Authorization", "NONE")[:30]
+    return {
+        "email_extracted": email,
+        "auth_header_prefix": auth_header,
+    }
