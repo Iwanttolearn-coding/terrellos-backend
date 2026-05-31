@@ -65,7 +65,7 @@ class SermonRequest(BaseModel):
     duration: Optional[str] = "30 minutes"
     style: Optional[str] = ""           # pentecostal | baptist | nondenominational | youth | evangelistic | prophetic | teaching | conference
     bibleVersion: Optional[str] = "NIV"
-    user_id: Optional[str] = "anonymous"
+    user_id: Optional[str] = None
     email: Optional[str] = ""
     generateExtras: Optional[bool] = True
 
@@ -77,7 +77,7 @@ class SimpleRequest(BaseModel):
     denomination: Optional[str] = ""
     bibleVersion: Optional[str] = "NIV"
     email: Optional[str] = ""
-    user_id: Optional[str] = "anonymous"
+    user_id: Optional[str] = None
 
 class MartyrStudyRequest(BaseModel):
     figure_name: str
@@ -224,7 +224,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
         }
 
     # Auto-save sermon to Supabase
-    _uid = _email_from_request(request, req.email or req.user_id or "")
+    _uid = _email_from_request(request, req.email or "")
     saved_id = await save_sermon(
         user_id=_uid,
         title=f"Sermon: {ref}",
@@ -295,7 +295,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
     # Auto-save bible study to Supabase
     topic_text = req.topic or req.scripture or "Bible Study"
     saved_id = await save_bible_study(
-        user_id=_email_from_request(request, req.email or req.user_id or ""),
+        user_id=_email_from_request(request, req.email or ""),
         title=f"Bible Study: {topic_text}",
         content=content,
         passage=req.scripture or "",
