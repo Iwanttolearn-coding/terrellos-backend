@@ -50,7 +50,11 @@ class SermonRequest(BaseModel):
     duration: Optional[str] = "30 minutes"
     style: Optional[str] = ""           # pentecostal | baptist | nondenominational | youth | evangelistic | prophetic | teaching | conference
     bibleVersion: Optional[str] = "NIV"
+    user_id: Optional[str] = "anonymous"
+    email: Optional[str] = ""
     generateExtras: Optional[bool] = True
+    user_id: Optional[str] = "anonymous"
+    email: Optional[str] = ""
 
 class SimpleRequest(BaseModel):
     topic: Optional[str] = ""
@@ -205,8 +209,9 @@ Pastoral encouragement: [Warm, personal pastoral note]
         }
 
     # Auto-save sermon to Supabase
+    _uid = req.email or req.user_id or "anonymous"
     saved_id = await save_sermon(
-        user_id="anonymous",
+        user_id=_uid,
         title=f"Sermon: {ref}",
         content=content,
         scripture=ref,
@@ -275,7 +280,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
     # Auto-save bible study to Supabase
     topic_text = req.topic or req.scripture or "Bible Study"
     saved_id = await save_bible_study(
-        user_id="anonymous",
+        user_id=req.email or req.user_id or "anonymous",
         title=f"Bible Study: {topic_text}",
         content=content,
         passage=req.scripture or "",
@@ -421,27 +426,33 @@ Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
 # ── Saved Content History ─────────────────────────────────────────────────────
 
 @router.get("/history/sermons")
-async def history_sermons(user_id: str = "anonymous", limit: int = 50):
-    items = await get_user_sermons(user_id, limit)
+async def history_sermons(email: str = "", user_id: str = "anonymous", limit: int = 50):
+    uid = email or user_id
+    items = await get_user_sermons(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.get("/history/bible-studies")
-async def history_bible_studies(user_id: str = "anonymous", limit: int = 50):
-    items = await get_user_bible_studies(user_id, limit)
+async def history_bible_studies(email: str = "", user_id: str = "anonymous", limit: int = 50):
+    uid = email or user_id
+    items = await get_user_bible_studies(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.get("/history/transcripts")
-async def history_transcripts(user_id: str = "anonymous", limit: int = 50):
-    items = await get_user_transcripts(user_id, limit)
+async def history_transcripts(email: str = "", user_id: str = "anonymous", limit: int = 50):
+    uid = email or user_id
+    items = await get_user_transcripts(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.delete("/history/{table}/{item_id}")
-async def delete_history_item(table: str, item_id: str, user_id: str = "anonymous"):
+async def delete_history_item(table: str, item_id: str, email: str = "", user_id: str = "anonymous"):
+    uid = email or user_id
     allowed = {"pastor_sermons", "pastor_bible_studies", "pastor_transcripts", "pastor_recordings"}
     if table not in allowed:
         return {"success": False, "error": "Invalid table"}
-    deleted = await delete_item(table, item_id, user_id)
+    deleted = await delete_item(table, item_id, uid)
     return {"success": deleted}
+
+
