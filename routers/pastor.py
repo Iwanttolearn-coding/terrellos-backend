@@ -441,29 +441,29 @@ Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
 # ── Saved Content History ─────────────────────────────────────────────────────
 
 @router.get("/history/sermons")
-async def history_sermons(email: str = "", user_id: str = "anonymous", limit: int = 50):
-    uid = email or user_id
+async def history_sermons(request: Request, email: str = "", user_id: str = "", limit: int = 50):
+    uid = _email_from_request(request, email or user_id or "")
     items = await get_user_sermons(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.get("/history/bible-studies")
-async def history_bible_studies(email: str = "", user_id: str = "anonymous", limit: int = 50):
-    uid = email or user_id
+async def history_bible_studies(request: Request, email: str = "", user_id: str = "", limit: int = 50):
+    uid = _email_from_request(request, email or user_id or "")
     items = await get_user_bible_studies(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.get("/history/transcripts")
-async def history_transcripts(email: str = "", user_id: str = "anonymous", limit: int = 50):
-    uid = email or user_id
+async def history_transcripts(request: Request, email: str = "", user_id: str = "", limit: int = 50):
+    uid = _email_from_request(request, email or user_id or "")
     items = await get_user_transcripts(uid, limit)
     return {"success": True, "items": items, "count": len(items)}
 
 
 @router.delete("/history/{table}/{item_id}")
-async def delete_history_item(table: str, item_id: str, email: str = "", user_id: str = "anonymous"):
-    uid = email or user_id
+async def delete_history_item(request: Request, table: str, item_id: str, email: str = "", user_id: str = ""):
+    uid = _email_from_request(request, email or user_id or "")
     allowed = {"pastor_sermons", "pastor_bible_studies", "pastor_transcripts", "pastor_recordings"}
     if table not in allowed:
         return {"success": False, "error": "Invalid table"}
