@@ -491,3 +491,226 @@ async def debug_auth(request: Request):
         "email_extracted": email,
         "auth_header_prefix": auth_header,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONSOLIDATED PATCH — 2026-05-31
+# Adds: apologetics, recordings, stats, transcripts(POST), courses/enroll
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Apologetics ───────────────────────────────────────────────────────────────
+
+class ApologeticsRequest(BaseModel):
+    topic: Optional[str] = ""
+    question: Optional[str] = ""
+    tradition: Optional[str] = ""
+    depth: Optional[str] = "intermediate"
+    email: Optional[str] = ""
+    app_id: Optional[str] = ""
+
+@router.post("/apologetics")
+async def apologetics(req: ApologeticsRequest, request: Request):
+    subject = req.topic or req.question or "the Christian faith"
+    depth_map = {
+        "beginner":    "Use accessible language, avoid jargon, assume no theological background.",
+        "intermediate":"Balance scholarly depth with readability. Use technical terms with brief explanations.",
+        "advanced":    "Academic depth, full philosophical/theological engagement, Greek/Hebrew where relevant.",
+    }
+    depth_note = depth_map.get(req.depth.lower(), depth_map["intermediate"])
+
+    try:
+        content = ai(f"""You are a Christian apologist with expertise in theology, philosophy, and history.
+
+Topic/Question: {subject}
+Tradition: {req.tradition or "broadly evangelical"}
+Depth level: {req.depth} — {depth_note}
+
+Provide a thorough, respectful apologetics response covering:
+
+**OVERVIEW**
+Brief introduction to why this question/topic matters for Christian faith.
+
+**BIBLICAL FOUNDATION**
+Key scriptures that speak to this topic, with full citation and exposition.
+
+**THEOLOGICAL ARGUMENT**
+Primary theological case — systematic, clear, grounded in orthodoxy.
+
+**PHILOSOPHICAL RESPONSE**
+Address the intellectual/philosophical dimension. Engage objections honestly.
+
+**HISTORICAL EVIDENCE**
+Historical support, if applicable (manuscript evidence, early church witness, etc.)
+
+**COMMON OBJECTIONS**
+Address the 3 most common objections to this position, with direct responses.
+
+**CONCLUSION**
+Summarize the core of the apologetic case. Why this is defensible, hopeful, and life-changing.
+
+**FURTHER RESOURCES**
+2-3 recommended books or scholars on this topic.""", max_tokens=3000)
+
+        uid = _email_from_request(request, req.email or "")
+        await save_generated_content(uid, f"Apologetics: {subject[:60]}", content, "apologetics", topic=subject)
+        return {"success": True, "content": content, "topic": subject, "word_count": len(content.split())}
+    except Exception as e:
+        raise HTTPException(500, f"Apologetics generation failed: {str(e)}")
+
+
+# ── Recordings ────────────────────────────────────────────────────────────────
+
+class RecordingRequest(BaseModel):
+    title: Optional[str] = "Untitled Recording"
+    transcript: Optional[str] = ""
+    summary: Optional[str] = ""
+    duration_sec: Optional[int] = 0
+    tags: Optional[list] = []
+    email: Optional[str] = ""
+    app_id: Optional[str] = ""
+
+from pastor_db import save_recording as _save_recording, get_user_recordings as _get_user_recordings
+
+@router.post("/recordings")
+async def save_recording_endpoint(req: RecordingRequest, request: Request):
+    uid = _email_from_request(request, req.email or "")
+    saved_id = await _save_recording(
+        user_id=uid,
+        title=req.title or "Untitled Recording",
+        transcript=req.transcript or "",
+        summary=req.summary or "",
+        duration_sec=req.duration_sec or 0,
+        tags=req.tags or [],
+    )
+    return {"success": True, "saved_id": saved_id}
+
+@router.get("/recordings")
+async def list_recordings_endpoint(request: Request, email: str = ""):
+    uid = _email_from_request(request, email or "")
+    items = await _get_user_recordings(uid)
+    return {"success": True, "items": items, "count": len(items)}
+
+@router.delete("/recordings/{recording_id}")
+async def delete_recording_endpoint(request: Request, recording_id: str, email: str = ""):
+    uid = _email_from_request(request, email or "")
+    deleted = await delete_item("pastor_recordings", recording_id, uid)
+    return {"success": deleted}
+
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
+
+@router.get("/stats")
+async def pastor_stats(request: Request, email: str = ""):
+    uid = _email_from_request(request, email or "")
+    sermons    = await get_user_sermons(uid, 500)
+    studies    = await get_user_bible_studies(uid, 500)
+    transcripts = await get_user_transcripts(uid, 500)
+    recordings = await _get_user_recordings(uid)
+    return {
+        "success": True,
+        "sermon_count":       len(sermons),
+        "bible_study_count":  len(studies),
+        "transcript_count":   len(transcripts),
+        "recording_count":    len(recordings),
+        "total":              len(sermons) + len(studies) + len(transcripts) + len(recordings),
+    }
+
+
+# ── Transcripts (save POST) ───────────────────────────────────────────────────
+
+class TranscriptRequest(BaseModel):
+    title: Optional[str] = "Untitled Transcript"
+    transcript: Optional[str] = ""
+    summary: Optional[str] = ""
+    email: Optional[str] = ""
+    app_id: Optional[str] = ""
+
+@router.post("/transcripts")
+async def save_transcript_endpoint(req: TranscriptRequest, request: Request):
+    from pastor_db import save_transcript as _save_transcript
+    uid = _email_from_request(request, req.email or "")
+    saved_id = await _save_transcript(
+        user_id=uid,
+        title=req.title or "Untitled Transcript",
+        transcript=req.transcript or "",
+        summary=req.summary or "",
+    )
+    return {"success": True, "saved_id": saved_id}
+
+
+# ── Course Enrollment ─────────────────────────────────────────────────────────
+
+class CourseEnrollRequest(BaseModel):
+    course_id: Optional[str] = ""
+    course_name: Optional[str] = ""
+    email: Optional[str] = ""
+    app_id: Optional[str] = ""
+
+PASTOR_COURSES = {
+    "foundations": {
+        "name": "Foundations of Faith",
+        "description": "Core Christian doctrine for new believers and growing disciples.",
+        "lessons": ["The Gospel","Prayer & Devotion","Reading Scripture","The Church","The Holy Spirit","Faith & Works","End Times"]
+    },
+    "sermon_craft": {
+        "name": "Sermon Craft Masterclass",
+        "description": "Learn to prepare and deliver powerful, scripture-centered sermons.",
+        "lessons": ["Text Selection","Exposition","Illustration","Application","Delivery","Altar Calls","Evaluating Your Message"]
+    },
+    "apologetics_101": {
+        "name": "Apologetics 101",
+        "description": "Defending the faith with reason, evidence, and love.",
+        "lessons": ["Why Apologetics","Historical Jesus","Resurrection Evidence","The Problem of Evil","Science & Faith","Other Religions","Sharing Your Faith"]
+    },
+    "pastoral_care": {
+        "name": "Pastoral Care",
+        "description": "Shepherding God's people through crisis, grief, and spiritual growth.",
+        "lessons": ["Grief Counseling","Marriage Crisis","Addiction Ministry","Mental Health","Hospital Visits","Conflict Resolution","Spiritual Direction"]
+    },
+}
+
+@router.get("/courses")
+async def list_courses():
+    return {"success": True, "courses": [
+        {"id": k, "name": v["name"], "description": v["description"], "lesson_count": len(v["lessons"])}
+        for k, v in PASTOR_COURSES.items()
+    ]}
+
+@router.post("/courses/enroll")
+async def enroll_course(req: CourseEnrollRequest, request: Request):
+    uid = _email_from_request(request, req.email or "")
+    course_id = req.course_id or ""
+    course = PASTOR_COURSES.get(course_id)
+    if not course and course_id:
+        # Accept unknown course IDs gracefully
+        course = {"name": req.course_name or course_id, "lessons": []}
+    if not course:
+        return {"success": False, "error": "No course_id provided"}
+    # Save enrollment as a generated_content record
+    await save_generated_content(
+        uid,
+        f"Enrolled: {course['name']}",
+        f"User enrolled in course: {course['name']}",
+        "course_enrollment",
+        topic=course_id,
+    )
+    return {
+        "success": True,
+        "enrolled": True,
+        "course_id": course_id,
+        "course_name": course["name"],
+        "lessons": course.get("lessons", []),
+        "message": f"You are now enrolled in {course['name']}",
+    }
+
+@router.get("/courses/{course_id}/lessons")
+async def course_lessons(course_id: str, request: Request):
+    course = PASTOR_COURSES.get(course_id)
+    if not course:
+        raise HTTPException(404, f"Course '{course_id}' not found")
+    return {
+        "success": True,
+        "course_id": course_id,
+        "course_name": course["name"],
+        "lessons": [{"index": i+1, "title": l} for i, l in enumerate(course["lessons"])],
+    }
