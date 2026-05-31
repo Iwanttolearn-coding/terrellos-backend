@@ -258,3 +258,68 @@ async def save_generated_content(
     except Exception as e:
         logger.warning("content save error (%s): %s", content_type, e)
         return None
+
+
+async def save_recording(
+    user_id: str,
+    title: str,
+    transcript: str = "",
+    summary: str = "",
+    duration_sec: int = 0,
+    tags: list = None,
+) -> Optional[str]:
+    """Save a transcription recording. Returns saved record ID or None on failure."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        logger.warning("Supabase not configured — skipping recording save")
+        return None
+    try:
+        data = {
+            "user_id": user_id,
+            "title": title,
+            "transcript": transcript,
+            "summary": summary,
+            "duration_sec": duration_sec,
+            "tags": tags or [],
+            "generated_at": _now(),
+        }
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(
+                f"{SUPABASE_URL}/rest/v1/pastor_recordings",
+                headers=_headers(),
+                json=data,
+            )
+        if r.status_code in (200, 201):
+            rows = r.json()
+            saved_id = rows[0]["id"] if rows else None
+            logger.info("✅ recording saved: %s", saved_id)
+            return saved_id
+        else:
+            logger.warning("recording save failed %s: %s", r.status_code, r.text[:200])
+            return None
+    except Exception as e:
+        logger.warning("recording save error: %s", e)
+        return None
+
+
+async def get_user_recordings(user_id: str, limit: int = 50) -> list:
+    """Fetch recordings for a user."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
+    try:
+        params = {
+            "user_id": f"eq.{user_id}",
+            "order": "generated_at.desc",
+            "limit": str(limit),
+        }
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/pastor_recordings",
+                headers=_headers(),
+                params=params,
+            )
+        if r.status_code == 200:
+            return r.json()
+        return []
+    except Exception as e:
+        logger.warning("get_user_recordings error: %s", e)
+        return []
