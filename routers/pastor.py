@@ -632,22 +632,23 @@ class TranscriptRequest(BaseModel):
 
 @router.post("/transcripts")
 async def save_transcript_endpoint(req: TranscriptRequest, request: Request):
-    from pastor_db import save_transcript as _save_transcript
-    uid = _email_from_request(request, req.email or "")
-    # Use either transcript or transcript_text field
-    text = req.transcript_text or req.transcript or ""
+    import traceback as _tb
     try:
+        from pastor_db import save_transcript as _save_transcript
+        uid = _email_from_request(request, req.email or "")
+        text = req.transcript_text or req.transcript or ""
         saved_id = await _save_transcript(
             user_id=uid,
             transcript_text=text,
-            duration_sec=req.duration_sec or 0,
+            duration_sec=float(req.duration_sec or 0),
             language=req.language or "en",
-            confidence=req.confidence or 0,
+            confidence=float(req.confidence or 0),
             source=req.source or "manual",
         )
         return {"success": True, "saved_id": saved_id, "title": req.title}
     except Exception as e:
-        return {"success": False, "error": str(e), "saved_id": None}
+        err_detail = _tb.format_exc()
+        return {"success": False, "error": str(e), "traceback": err_detail[-500:], "saved_id": None}
 
 
 # ── Course Enrollment ─────────────────────────────────────────────────────────
