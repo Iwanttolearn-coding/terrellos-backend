@@ -17,16 +17,14 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 FOUNDERS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
 
 def _email_from_request(request: Request, body_email: str) -> str:
-    """Extract user email from body or Bearer token. Falls back to 'anonymous'."""
+    """Extract user email from body or Bearer JWT token. Falls back to 'anonymous'."""
     if body_email and body_email.strip():
         return body_email.strip()
-    # Try to extract from Authorization header via auth token store
     try:
-        from routers.auth import _TOKENS
-        auth_header = request.headers.get("Authorization", "")
-        token = auth_header.replace("Bearer ", "").strip()
-        if token and token in _TOKENS:
-            return _TOKENS[token].get("email", "anonymous")
+        from routers.auth import email_from_request as _auth_email
+        extracted = _auth_email(request)
+        if extracted:
+            return extracted
     except Exception:
         pass
     return "anonymous"
