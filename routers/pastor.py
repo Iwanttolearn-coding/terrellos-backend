@@ -53,8 +53,6 @@ class SermonRequest(BaseModel):
     user_id: Optional[str] = "anonymous"
     email: Optional[str] = ""
     generateExtras: Optional[bool] = True
-    user_id: Optional[str] = "anonymous"
-    email: Optional[str] = ""
 
 class SimpleRequest(BaseModel):
     topic: Optional[str] = ""
@@ -63,6 +61,8 @@ class SimpleRequest(BaseModel):
     question: Optional[str] = ""
     denomination: Optional[str] = ""
     bibleVersion: Optional[str] = "NIV"
+    email: Optional[str] = ""
+    user_id: Optional[str] = "anonymous"
 
 class MartyrStudyRequest(BaseModel):
     figure_name: str
@@ -454,5 +454,6 @@ async def delete_history_item(table: str, item_id: str, email: str = "", user_id
         return {"success": False, "error": "Invalid table"}
     deleted = await delete_item(table, item_id, uid)
     return {"success": deleted}
+
 
 
