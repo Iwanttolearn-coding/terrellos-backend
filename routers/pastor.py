@@ -621,7 +621,12 @@ async def pastor_stats(request: Request, email: str = ""):
 class TranscriptRequest(BaseModel):
     title: Optional[str] = "Untitled Transcript"
     transcript: Optional[str] = ""
+    transcript_text: Optional[str] = ""  # alias
     summary: Optional[str] = ""
+    duration_sec: Optional[float] = 0
+    language: Optional[str] = "en"
+    confidence: Optional[float] = 0
+    source: Optional[str] = "manual"
     email: Optional[str] = ""
     app_id: Optional[str] = ""
 
@@ -629,13 +634,20 @@ class TranscriptRequest(BaseModel):
 async def save_transcript_endpoint(req: TranscriptRequest, request: Request):
     from pastor_db import save_transcript as _save_transcript
     uid = _email_from_request(request, req.email or "")
-    saved_id = await _save_transcript(
-        user_id=uid,
-        title=req.title or "Untitled Transcript",
-        transcript=req.transcript or "",
-        summary=req.summary or "",
-    )
-    return {"success": True, "saved_id": saved_id}
+    # Use either transcript or transcript_text field
+    text = req.transcript_text or req.transcript or ""
+    try:
+        saved_id = await _save_transcript(
+            user_id=uid,
+            transcript_text=text,
+            duration_sec=req.duration_sec or 0,
+            language=req.language or "en",
+            confidence=req.confidence or 0,
+            source=req.source or "manual",
+        )
+        return {"success": True, "saved_id": saved_id, "title": req.title}
+    except Exception as e:
+        return {"success": False, "error": str(e), "saved_id": None}
 
 
 # ── Course Enrollment ─────────────────────────────────────────────────────────
