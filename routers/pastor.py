@@ -334,7 +334,7 @@ Include:
 9. Key quotes or writings (if any survive)
 10. Discussion questions for study groups
 11. Prayer of remembrance""", max_tokens=3000)
-    return {"success": True, "figure": req.figure_name, "content": content}
+    return {"success": True, "figure": req.figure_name, "content": content, "word_count": len(content.split())}
 
 # ── Church History ────────────────────────────────────────────────────────────
 
@@ -354,7 +354,7 @@ Include:
 8. Modern significance and ongoing legacy
 9. Discussion questions
 10. Recommended further reading""", max_tokens=3000)
-    return {"success": True, "content": content}
+    return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Theology ──────────────────────────────────────────────────────────────────
 
@@ -371,7 +371,7 @@ Include:
 6. Practical Christian application
 7. Common misconceptions or heresies to avoid
 8. Pastoral guidance for discussing this in a church context""", max_tokens=3000)
-    return {"success": True, "content": content}
+    return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Pastoral Counseling ───────────────────────────────────────────────────────
 
@@ -391,7 +391,7 @@ Include:
 9. Encouragement for the long journey
 
 Always lead with compassion and Scripture. Never minimize real pain.""", max_tokens=2500)
-    return {"success": True, "content": content}
+    return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Discipleship ──────────────────────────────────────────────────────────────
 
@@ -409,7 +409,7 @@ Include:
 6. Service/outreach component
 7. Assessment questions for measuring growth
 8. Graduation/completion next steps and celebration ideas""", max_tokens=3000)
-    return {"success": True, "content": content}
+    return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── History Search ────────────────────────────────────────────────────────────
 
@@ -420,7 +420,7 @@ Category: {req.category or "Christian history"}
 
 Provide historical context, key figures, theological significance, and modern relevance.
 Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
-    return {"success": True, "content": content}
+    return {"success": True, "content": content, "word_count": len(content.split())}
 
 
 # ── Saved Content History ─────────────────────────────────────────────────────
