@@ -9,6 +9,7 @@ from openai import OpenAI
 import os, json
 
 from pastor_db import save_sermon, save_bible_study, save_transcript, save_generated_content, get_user_sermons, get_user_bible_studies, get_user_transcripts, delete_item
+from routers.usage_logger import log_usage
 
 router = APIRouter(prefix="/v1/pastor", tags=["Pastor AI"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -235,6 +236,14 @@ Pastoral encouragement: [Warm, personal pastoral note]
         sermon_length=duration,
         sermon_json={"style": style, "audience": audience},
     )
+    log_usage(
+        endpoint="/v1/pastor/sermon",
+        user_id=_uid,
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"scripture": ref, "style": style, "word_count": len(content.split()), "saved_id": saved_id},
+    )
     return {
         "success": True,
         "content": content,
@@ -302,6 +311,15 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
         version=req.bibleVersion or "NIV",
         topic=req.topic or "",
     )
+    _uid2 = _email_from_request(request, req.email or "")
+    log_usage(
+        endpoint="/v1/pastor/bible-study",
+        user_id=_uid2,
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"scripture": req.scripture or req.topic, "word_count": len(content.split()), "saved_id": saved_id},
+    )
     return {"success": True, "content": content, "word_count": len(content.split()), "saved_id": saved_id}
 
 # ── Devotional endpoint ───────────────────────────────────────────────────────
@@ -331,6 +349,14 @@ Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
     content = ai(prompt, max_tokens=2500)
     _uid2 = _email_from_request(request, req.email or "")
     await save_generated_content(_uid2, f"Devotional: {req.scripture or req.topic or 'Daily Devotional'}", content, "devotional", topic=req.topic or "", scripture=req.scripture or "")
+    log_usage(
+        endpoint="/v1/pastor/devotional",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "devotional", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Martyr Study ──────────────────────────────────────────────────────────────
@@ -371,6 +397,14 @@ Include:
 8. Modern significance and ongoing legacy
 9. Discussion questions
 10. Recommended further reading""", max_tokens=3000)
+    log_usage(
+        endpoint="/v1/pastor/church-history",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "church_history", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Theology ──────────────────────────────────────────────────────────────────
@@ -390,6 +424,14 @@ Include:
 8. Pastoral guidance for discussing this in a church context""", max_tokens=3000)
     _uid3 = _email_from_request(request, req.email or "")
     await save_generated_content(_uid3, f"Theology: {req.topic or req.question or 'Study'}", content, "theology", topic=req.topic or "")
+    log_usage(
+        endpoint="/v1/pastor/theology",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "theology", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Pastoral Counseling ───────────────────────────────────────────────────────
@@ -412,6 +454,14 @@ Include:
 Always lead with compassion and Scripture. Never minimize real pain.""", max_tokens=2500)
     _uid4 = _email_from_request(request, req.email or "")
     await save_generated_content(_uid4, f"Counseling: {req.topic or req.question or 'Session'}", content, "counseling", topic=req.topic or "")
+    log_usage(
+        endpoint="/v1/pastor/counseling",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "counseling", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── Discipleship ──────────────────────────────────────────────────────────────
@@ -432,6 +482,14 @@ Include:
 8. Graduation/completion next steps and celebration ideas""", max_tokens=3000)
     _uid5 = _email_from_request(request, req.email or "")
     await save_generated_content(_uid5, f"Discipleship: {req.topic or 'Growth Plan'}", content, "discipleship", topic=req.topic or "")
+    log_usage(
+        endpoint="/v1/pastor/discipleship",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "discipleship", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 # ── History Search ────────────────────────────────────────────────────────────
@@ -443,6 +501,14 @@ Category: {req.category or "Christian history"}
 
 Provide historical context, key figures, theological significance, and modern relevance.
 Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
+    log_usage(
+        endpoint="/v1/pastor/history/search",
+        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
+        status="success",
+        model="gpt-4o",
+        provider="openai",
+        extra={"type": "history_search", "word_count": len(content.split())},
+    )
     return {"success": True, "content": content, "word_count": len(content.split())}
 
 
