@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 import os
+from .usage_logger import get_logs, get_stats
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin"])
 
@@ -20,13 +21,16 @@ class UpdateUserRequest(BaseModel):
 
 @router.get("/stats")
 async def admin_stats():
+    usage = get_stats()
     return {
         "success": True,
-        "version": "9.1.0-pastor-patch",
+        "version": "9.2.0-qa-fixes",
         "openai": bool(os.getenv("OPENAI_API_KEY")),
         "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
         "supabase": bool(os.getenv("SUPABASE_URL")),
         "time": datetime.now(timezone.utc).isoformat(),
+        "jobs_logged": usage["jobs_logged"],
+        "total_credits_used": usage["total_credits_used"],
     }
 
 
@@ -77,43 +81,15 @@ async def admin_update_user(user_id: str, payload: UpdateUserRequest):
 
 
 @router.get("/logs")
-async def admin_logs(request: Request, limit: int = 50):
-    """Return recent system activity logs from Supabase if available."""
-    logs = []
-    try:
-        import httpx
-        SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-        SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY", "")
-        if SUPABASE_URL and SUPABASE_KEY:
-            headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-            }
-            async with httpx.AsyncClient(timeout=10) as c:
-                # Try pastor_ai_logs table first
-                r = await c.get(
-                    f"{SUPABASE_URL}/rest/v1/pastor_ai_logs",
-                    headers=headers,
-                    params={"order": "created_at.desc", "limit": limit},
-                )
-                if r.status_code == 200:
-                    logs = r.json()
-                else:
-                    # Fallback: try generation_history
-                    r2 = await c.get(
-                        f"{SUPABASE_URL}/rest/v1/generation_history",
-                        headers=headers,
-                        params={"order": "created_at.desc", "limit": limit},
-                    )
-                    if r2.status_code == 200:
-                        logs = r2.json()
-    except Exception as e:
-        logs = [{"message": f"Log fetch error: {str(e)}", "timestamp": datetime.now(timezone.utc).isoformat()}]
-
+async def admin_logs(request: Request, limit: int = 50, user_id: str = None):
+    """Return usage logs from in-memory logger (all generative AI actions)."""
+    logs = get_logs(limit=limit, user_id=user_id)
+    stats = get_stats()
     return {
         "success": True,
         "logs": logs,
         "count": len(logs),
+        "stats": stats,
     }
 
 

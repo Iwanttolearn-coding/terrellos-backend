@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 from openai import OpenAI
 import os, httpx, base64, io
+from .usage_logger import log_usage
+from .auth import email_from_request
 
 router = APIRouter(prefix="/v1/voice", tags=["Voice"])
 
@@ -29,7 +31,7 @@ class TranscribeRequest(BaseModel):
     language: Optional[str] = None
 
 @router.post("/speak")
-async def speak(payload: SpeakRequest):
+async def speak(payload: SpeakRequest, request: Request = None):
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail="Text required")
     if not ELEVENLABS_API_KEY:
@@ -47,6 +49,14 @@ async def speak(payload: SpeakRequest):
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=f"ElevenLabs error: {r.text}")
     audio_b64 = base64.b64encode(r.content).decode()
+    # Fire-and-forget usage log
+    try:
+        user_email = email_from_request(request) if request else "anonymous"
+        log_usage(endpoint="/v1/voice/speak", user_id=user_email,
+                  provider="elevenlabs", model=model,
+                  extra={"voice_id": vid, "text_length": len(payload.text)})
+    except Exception:
+        pass
     return {"success": True, "audio_base64": audio_b64, "content_type": "audio/mpeg",
             "voice_id": vid, "model": model}
 
@@ -85,6 +95,13 @@ async def transcribe_upload(file: UploadFile = File(...), language: Optional[str
         kwargs = {"model": "whisper-1", "file": audio_io}
         if language: kwargs["language"] = language
         result = openai_client.audio.transcriptions.create(**kwargs)
+        # Fire-and-forget usage log — never blocks response
+        try:
+            log_usage(endpoint="/v1/voice/transcribe-upload", user_id="anonymous",
+                      model="whisper-1", provider="openai",
+                      extra={"filename": file.filename})
+        except Exception:
+            pass
         return {"success": True, "transcript": result.text, "filename": file.filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

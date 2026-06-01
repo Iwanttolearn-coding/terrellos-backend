@@ -151,6 +151,88 @@ async def logout():
     return {"success": True, "message": "Logged out"}
 
 
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    phone:        Optional[str] = None
+    business_name:Optional[str] = None
+    avatar_url:   Optional[str] = None
+    preferences:  Optional[dict] = None
+
+
+# Immutable fields — never allow user to self-update these
+_PROTECTED_FIELDS = {"role", "plan", "is_founder", "all_tools_access", "credits",
+                     "email", "user_id", "exp", "iat"}
+
+# In-memory profile store (augments JWT claims)
+_PROFILE_STORE: dict = {}
+
+
+@router.patch("/me")
+async def update_me(payload: ProfileUpdateRequest, request: Request):
+    """
+    Allow the authenticated user to update safe profile fields only.
+    Protected fields (role, plan, is_founder, email, credits) are
+    silently ignored — never exposed as an error.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    claims = decode_token(token)
+    email  = claims.get("email", "")
+    if not email:
+        raise HTTPException(status_code=401, detail="Could not identify user from token")
+
+    # Build update dict from only the safe, non-None fields supplied
+    safe_updates: dict = {}
+    for field, val in payload.model_dump(exclude_none=True).items():
+        if field not in _PROTECTED_FIELDS and val is not None:
+            safe_updates[field] = val
+
+    # Merge into profile store
+    existing = _PROFILE_STORE.get(email, {})
+    existing.update(safe_updates)
+    existing["email"]      = email        # always preserve
+    existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _PROFILE_STORE[email]  = existing
+
+    # Also update _REGISTERED_USERS if this is a registered user
+    if email in _REGISTERED_USERS:
+        for k, v in safe_updates.items():
+            _REGISTERED_USERS[email][k] = v
+
+    return {
+        "success": True,
+        "message": "Profile updated",
+        "profile": {**claims, **{k: v for k, v in existing.items()
+                                 if k not in _PROTECTED_FIELDS}},
+        "updated_fields": list(safe_updates.keys()),
+    }
+
+
+@router.get("/me/profile")
+async def get_profile(request: Request):
+    """
+    Return full profile: JWT claims merged with stored profile fields.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    claims = decode_token(token)
+    email  = claims.get("email", "")
+    stored = _PROFILE_STORE.get(email, {})
+    return {
+        "success": True,
+        "user": {
+            **claims,
+            **{k: v for k, v in stored.items() if k not in _PROTECTED_FIELDS},
+        },
+    }
+
+
 @router.post("/founder-bypass")
 async def founder_bypass(payload: LoginRequest):
     email = payload.email.lower().strip()

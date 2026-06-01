@@ -1,14 +1,20 @@
 """
 /v1/design/* — All Around Customs: AI image gen, vectorization, print tools
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from openai import OpenAI
+from .usage_logger import log_usage
+from .auth import email_from_request
 import os
 
 router = APIRouter(prefix="/v1/design", tags=["All Around Customs"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Use env-configurable model; gpt-image-1 is the default (dall-e-3 is unavailable on this key tier)
+IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 class ImageGenerateRequest(BaseModel):
@@ -27,33 +33,61 @@ class PrintQuoteRequest(BaseModel):
     material: Optional[str] = "dtf"
 
 @router.post("/generate-image")
-async def generate_image(payload: ImageGenerateRequest):
+async def generate_image(payload: ImageGenerateRequest, request: Request):
     if not client:
         raise HTTPException(status_code=503, detail="OpenAI not configured")
+    user = payload.user_id or email_from_request(request) or "anonymous"
     try:
         resp = client.images.generate(
-            model="dall-e-3", prompt=payload.prompt,
-            size=payload.size, quality=payload.quality or "standard",
+            model=IMAGE_MODEL,
+            prompt=payload.prompt,
+            size=payload.size or "1024x1024",
             n=1,
         )
         image_url = resp.data[0].url if resp.data else None
-        return {"success": True, "image_url": image_url, "images": [{"url": img.url} for img in resp.data],
-                "prompt": payload.prompt}
+        # Fire-and-forget usage log — never blocks response
+        log_usage(
+            endpoint="/v1/design/generate-image",
+            user_id=user,
+            model=IMAGE_MODEL,
+            provider="openai",
+            extra={"prompt_length": len(payload.prompt)},
+        )
+        return {
+            "success": True,
+            "image_url": image_url,
+            "images": [{"url": img.url} for img in resp.data],
+            "prompt": payload.prompt,
+            "model": IMAGE_MODEL,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/memorial-image")
-async def memorial_image(payload: ImageGenerateRequest):
+async def memorial_image(payload: ImageGenerateRequest, request: Request):
     enhanced_prompt = f"A dignified, emotionally resonant memorial image: {payload.prompt}. Style: artistic, warm tones, timeless."
     if not client:
         raise HTTPException(status_code=503, detail="OpenAI not configured")
+    user = payload.user_id or email_from_request(request) or "anonymous"
     try:
         resp = client.images.generate(
-            model="dall-e-3", prompt=enhanced_prompt,
-            size=payload.size or "1024x1024", quality="hd", n=1,
+            model=IMAGE_MODEL,
+            prompt=enhanced_prompt,
+            size=payload.size or "1024x1024",
+            n=1,
         )
-        return {"success": True, "images": [{"url": img.url} for img in resp.data],
-                "type": "memorial"}
+        log_usage(
+            endpoint="/v1/design/memorial-image",
+            user_id=user,
+            model=IMAGE_MODEL,
+            provider="openai",
+        )
+        return {
+            "success": True,
+            "images": [{"url": img.url} for img in resp.data],
+            "type": "memorial",
+            "model": IMAGE_MODEL,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -72,8 +106,10 @@ async def print_quote(payload: PrintQuoteRequest):
     }
 
 @router.post("/vectorize-prompt")
-async def vectorize_prompt(request: dict):
-    description = request.get("description", "")
+async def vectorize_prompt(request: Request):
+    body = await request.json()
+    description = body.get("description", "")
+    user = email_from_request(request) or "anonymous"
     if not client or not description:
         raise HTTPException(status_code=400, detail="Description required and OpenAI must be configured")
     prompt = f"Create a clean, professional vector art description optimized for DTF printing: {description}. Include: color palette (max 8 colors), line style, composition, background treatment."
@@ -81,5 +117,11 @@ async def vectorize_prompt(request: dict):
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=500,
+    )
+    log_usage(
+        endpoint="/v1/design/vectorize-prompt",
+        user_id=user,
+        model="gpt-4o-mini",
+        provider="openai",
     )
     return {"success": True, "vector_prompt": resp.choices[0].message.content}

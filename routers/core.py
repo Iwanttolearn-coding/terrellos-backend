@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import Optional
 from openai import OpenAI
 import os
+from .usage_logger import log_usage
+from .auth import email_from_request
 
 router = APIRouter(prefix="/v1/core", tags=["Core"])
 
@@ -118,13 +120,23 @@ async def core_chat(payload: CoreChatRequest, request: Request):
             temperature=0.7,
             max_tokens=max_tokens,
         )
-        return {
+        result = {
             "success": True,
             "reply": resp.choices[0].message.content,
             "app_id": app_id,
             "model": model,
             "tokens": resp.usage.total_tokens if resp.usage else None,
         }
+        # Fire-and-forget usage log
+        user_email = payload.user_id or email_from_request(request) or "anonymous"
+        log_usage(
+            endpoint="/v1/core/chat",
+            user_id=user_email,
+            model=model,
+            provider="openai",
+            extra={"app_id": app_id, "tokens": result["tokens"]},
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
