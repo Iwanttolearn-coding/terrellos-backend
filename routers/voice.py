@@ -1,7 +1,7 @@
 """
 /v1/voice/* — TTS, voice cloning, transcription, streaming
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
