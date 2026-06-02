@@ -106,3 +106,140 @@ async def trial_checkout(req: TrialCheckoutRequest):
 @router.get("/plans")
 async def list_plans():
     return {"success": True, "plans": PASTOR_PLANS}
+
+
+# ── NEW: Live PayPal checkout for all plans ───────────────────────────────────
+
+class CheckoutRequest(BaseModel):
+    planName: Optional[str] = "church"
+    price: Optional[str] = "29.00"
+    billingCycle: Optional[str] = "monthly"
+    app_id: Optional[str] = ""
+
+class CaptureRequest(BaseModel):
+    token: Optional[str] = None        # PayPal's ?token= query param (order ID)
+    orderId: Optional[str] = None      # alias
+    order_id: Optional[str] = None     # alias
+    planName: Optional[str] = "church"
+    billingCycle: Optional[str] = "monthly"
+    userEmail: Optional[str] = None
+    app_id: Optional[str] = ""
+
+
+@router.post("/checkout")
+async def create_checkout(req: CheckoutRequest):
+    """Create a live PayPal order for Church/Premium plans."""
+    # Use live credentials — PAYPAL_ENV must be 'live' on Fly.io
+    client_id = PAYPAL_CLIENT_ID
+    secret     = PAYPAL_SECRET
+    if not client_id or not secret:
+        raise HTTPException(503, "PayPal not configured. Contact support.")
+
+    price_str = str(req.price or "29.00").replace("$", "").strip()
+    try:
+        amount = f"{float(price_str):.2f}"
+    except ValueError:
+        amount = "29.00"
+
+    plan_slug   = (req.planName or "church").lower().replace(" ", "-")
+    cycle       = req.billingCycle or "monthly"
+    description = f"Pastor AI {req.planName or 'Church'} Plan — {cycle.capitalize()}"
+    return_url  = f"{PASTOR_FRONTEND_URL}/billing/success?plan={plan_slug}&cycle={cycle}"
+    cancel_url  = f"{PASTOR_FRONTEND_URL}/billing/cancel"
+
+    try:
+        token = await _get_token()
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"{_base()}/v2/checkout/orders",
+                json={
+                    "intent": "CAPTURE",
+                    "purchase_units": [{"amount": {"currency_code": "USD", "value": amount}, "description": description}],
+                    "application_context": {
+                        "brand_name": "Pastor AI Connect",
+                        "landing_page": "BILLING",
+                        "user_action": "PAY_NOW",
+                        "return_url": return_url,
+                        "cancel_url": cancel_url,
+                    },
+                },
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            )
+        if r.status_code not in (200, 201):
+            raise RuntimeError(f"PayPal order error {r.status_code}: {r.text[:200]}")
+        order = r.json()
+        approve_url = next((l["href"] for l in order.get("links", []) if l.get("rel") == "approve"), None)
+        logger.info("checkout order=%s plan=%s amount=%s", order.get("id"), plan_slug, amount)
+        return {"success": True, "redirectUrl": approve_url, "checkout_url": approve_url, "orderId": order.get("id")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("checkout error: %s", e)
+        raise HTTPException(502, f"Checkout failed: {str(e)}")
+
+
+@router.post("/capture")
+async def capture_payment(req: CaptureRequest):
+    """Capture a PayPal order after user approves and update subscription."""
+    order_id = req.token or req.orderId or req.order_id
+    if not order_id:
+        raise HTTPException(400, "orderId / token is required.")
+
+    client_id = PAYPAL_CLIENT_ID
+    secret     = PAYPAL_SECRET
+    if not client_id or not secret:
+        raise HTTPException(503, "PayPal not configured.")
+
+    plan_map = {"church": "church", "premium": "premium", "trial": "trial", "free": "free"}
+    plan_key = plan_map.get((req.planName or "church").lower(), "church")
+    cycle    = req.billingCycle or "monthly"
+
+    try:
+        pp_token = await _get_token()
+        async with httpx.AsyncClient(timeout=20) as c:
+            # Check current status first
+            check = await c.get(
+                f"{_base()}/v2/checkout/orders/{order_id}",
+                headers={"Authorization": f"Bearer {pp_token}"},
+            )
+            check_data = check.json()
+            logger.info("capture check order=%s status=%s", order_id, check_data.get("status"))
+
+            if check_data.get("status") == "COMPLETED":
+                return {"success": True, "already_captured": True, "plan": plan_key,
+                        "message": "Payment already confirmed. Welcome to Pastor AI!"}
+
+            if check_data.get("status") != "APPROVED":
+                raise HTTPException(402, f"Cannot capture — order status is {check_data.get('status')}")
+
+            # Capture
+            cap_r = await c.post(
+                f"{_base()}/v2/checkout/orders/{order_id}/capture",
+                json={},
+                headers={"Authorization": f"Bearer {pp_token}", "Content-Type": "application/json"},
+            )
+        cap = cap_r.json()
+        if cap.get("status") != "COMPLETED":
+            logger.error("capture failed: %s", cap)
+            raise HTTPException(402, f"Payment capture failed: {cap.get('status')}")
+
+        capture_id  = cap.get("purchase_units", [{}])[0].get("payments", {}).get("captures", [{}])[0].get("id")
+        amount_paid = cap.get("purchase_units", [{}])[0].get("payments", {}).get("captures", [{}])[0].get("amount", {}).get("value")
+        payer_email = cap.get("payer", {}).get("email_address") or req.userEmail
+
+        logger.info("capture SUCCESS order=%s captureId=%s amount=%s payer=%s", order_id, capture_id, amount_paid, payer_email)
+        return {
+            "success": True,
+            "plan": plan_key,
+            "billing_cycle": cycle,
+            "amount_paid": amount_paid,
+            "capture_id": capture_id,
+            "order_id": order_id,
+            "payer_email": payer_email,
+            "message": f"Payment complete! Welcome to Pastor AI {plan_key.capitalize()}!",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("capture error: %s", e)
+        raise HTTPException(502, f"Capture failed: {str(e)}")
