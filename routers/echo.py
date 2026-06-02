@@ -22,8 +22,12 @@ class CompanionRequest(BaseModel):
 
 class LegacyRequest(BaseModel):
     user_id: Optional[str] = None
-    prompt: Optional[str] = None
     loved_one_name: Optional[str] = None
+    profile_name: Optional[str] = None
+    prompt: Optional[str] = None
+    message: Optional[str] = None
+    app_id: Optional[str] = None
+    relationship: Optional[str] = None
 
 class GriefRequest(BaseModel):
     message: str
@@ -54,7 +58,7 @@ async def legacy_message(payload: LegacyRequest):
     prompt_text = getattr(payload, "prompt", None) or getattr(payload, "message", None) or "Share a legacy message"
     if not client:
         return {"success": True, "message": f"A message of love and legacy for {name}."}
-    prompt = f"Write a heartfelt legacy message for {name}. Prompt: {prompt_text}. Make it warm, specific, and meaningful for future generations."
+    prompt = f"Write a heartfelt legacy message for {name}. Prompt: {_prompt}. Make it warm, specific, and meaningful for future generations."
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "system", "content": ECHO_SYSTEM}, {"role": "user", "content": prompt}],
