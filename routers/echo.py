@@ -21,7 +21,7 @@ class CompanionRequest(BaseModel):
     emotional_state: Optional[str] = None
 
 class LegacyRequest(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     prompt: str
     loved_one_name: Optional[str] = None
 
@@ -49,10 +49,12 @@ async def companion(payload: CompanionRequest):
 
 @router.post("/legacy-message")
 async def legacy_message(payload: LegacyRequest):
-    name = payload.loved_one_name or "your loved one"
+    # Allow profile_name OR loved_one_name, and message OR prompt
+    name = payload.loved_one_name or payload.profile_name or "your loved one"
+    prompt_text = getattr(payload, "prompt", None) or getattr(payload, "message", None) or "Share a legacy message"
     if not client:
         return {"success": True, "message": f"A message of love and legacy for {name}."}
-    prompt = f"Write a heartfelt legacy message for {name}. Prompt: {payload.prompt}. Make it warm, specific, and meaningful for future generations."
+    prompt = f"Write a heartfelt legacy message for {name}. Prompt: {prompt_text}. Make it warm, specific, and meaningful for future generations."
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "system", "content": ECHO_SYSTEM}, {"role": "user", "content": prompt}],
