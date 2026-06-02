@@ -298,7 +298,7 @@ class SaveRecordingRequest(BaseModel):
     user_id: str
     profile_id: Optional[str] = None
     question_id: int
-    question_text: str
+    question_text: Optional[str] = None
     category: str
     transcript: str
     audio_url: Optional[str] = None
@@ -311,7 +311,7 @@ class SaveRecordingRequest(BaseModel):
 
 class AIFollowUpRequest(BaseModel):
     question_id: int
-    question_text: str
+    question_text: Optional[str] = None
     category: str
     transcript: str
     emotional_state: Optional[dict] = None
