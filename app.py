@@ -29,7 +29,7 @@ from routers.gallery import router as gallery_router
 from routers.auth    import router as auth_router
 from routers.system import router as system_router
 from routers.paypal          import router as paypal_router
-from routers.payments        import router as payments_router
+from routers.payments        import router as payments_router, checkout_router
 from routers.voice_interview import router as voice_interview_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
@@ -162,6 +162,7 @@ app.include_router(auth_router)
 app.include_router(system_router)
 app.include_router(paypal_router, prefix="/v1/paypal", tags=["PayPal Payments"])
 app.include_router(payments_router)
+app.include_router(checkout_router)
 app.include_router(voice_interview_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
