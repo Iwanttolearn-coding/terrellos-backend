@@ -148,8 +148,22 @@ async def vectorize_prompt(request: Request):
     body        = await request.json()
     description = body.get("description", "")
     user        = email_from_request(request) or "anonymous"
-    if not client or not description:
-        raise HTTPException(status_code=400, detail="Description required and OpenAI must be configured")
+    if not description:
+        return {
+            "success": True,
+            "vectorized_prompt": "A clean, professional vector art design with bold lines, flat colors, and high contrast — optimized for DTF printing.",
+            "color_palette": ["#000000", "#FFFFFF", "#FF0000", "#0000FF"],
+            "print_ready": True,
+            "note": "No description provided — returned default vector template.",
+        }
+    if not client:
+        return {
+            "success": True,
+            "vectorized_prompt": f"Vector art design of: {description}. Clean bold lines, flat colors, max 8 colors, high contrast, print-ready.",
+            "color_palette": ["#000000", "#FFFFFF"],
+            "print_ready": True,
+            "note": "AI enhancement unavailable — returned base prompt.",
+        }
     prompt = f"Create a clean, professional vector art description optimized for DTF printing: {description}. Include: color palette (max 8 colors), line style, composition, background treatment."
     resp   = client.chat.completions.create(
         model="gpt-4o-mini",
