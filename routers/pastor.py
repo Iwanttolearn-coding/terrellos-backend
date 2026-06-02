@@ -382,9 +382,10 @@ Include:
 # ── Church History ────────────────────────────────────────────────────────────
 
 @router.post("/church-history")
-async def church_history(req: BlackChristianHistoryRequest):
-    query = f"{req.topic} {req.era} {req.region}".strip() or "African American Christian history"
-    content = ai(f"""Provide a detailed historical analysis of: {query}
+async def church_history(req: BlackChristianHistoryRequest, request: Request):
+    try:
+        query = f"{req.topic} {req.era} {req.region}".strip() or "African American Christian history"
+        content = ai(f"""Provide a detailed historical analysis of: {query}
 
 Include:
 1. Overview and why this history matters
@@ -397,15 +398,20 @@ Include:
 8. Modern significance and ongoing legacy
 9. Discussion questions
 10. Recommended further reading""", max_tokens=3000)
-    log_usage(
-        endpoint="/v1/pastor/church-history",
-        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
-        status="success",
-        model="gpt-4o",
-        provider="openai",
-        extra={"type": "church_history", "word_count": len(content.split())},
-    )
-    return {"success": True, "content": content, "word_count": len(content.split())}
+        _uid_ch = _email_from_request(request, "")
+        await save_generated_content(_uid_ch, f"Church History: {query[:60]}", content, "church_history", topic=req.topic or "")
+        log_usage(
+            endpoint="/v1/pastor/church-history",
+            user_id=_uid_ch,
+            status="success",
+            model="gpt-4o",
+            provider="openai",
+            extra={"type": "church_history", "word_count": len(content.split())},
+        )
+        return {"success": True, "content": content, "word_count": len(content.split())}
+    except Exception as e:
+        log_usage(endpoint="/v1/pastor/church-history", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Church history generation failed: {str(e)}")
 
 # ── Theology ──────────────────────────────────────────────────────────────────
 
