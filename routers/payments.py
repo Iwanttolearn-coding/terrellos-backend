@@ -243,3 +243,126 @@ async def capture_payment(req: CaptureRequest):
     except Exception as e:
         logger.error("capture error: %s", e)
         raise HTTPException(502, f"Capture failed: {str(e)}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TerrellOS /v1/checkout/* — AI credit plan checkout via PayPal Live
+# Called by: Pricing.jsx → createCheckoutSession(planId, email)
+# ═══════════════════════════════════════════════════════════════════
+
+TERRELLOS_FRONTEND_URL = os.getenv("TERRELLOS_FRONTEND_URL", "https://app.tm-dezigns.com")
+
+TERRELLOS_PLANS = {
+    "starter":    {"price": "29.00",  "name": "TerrellOS Starter — Monthly",      "credits": 1000},
+    "pro":        {"price": "99.00",  "name": "TerrellOS Professional — Monthly", "credits": 5000},
+    "enterprise": {"price": "249.00", "name": "TerrellOS Enterprise — Monthly",   "credits": 20000},
+}
+
+checkout_router = APIRouter(prefix="/v1/checkout", tags=["TerrellOS Checkout"])
+
+
+class TerrellOSCheckoutRequest(BaseModel):
+    plan: str
+    email: Optional[str] = ""
+    success_url: Optional[str] = None
+    cancel_url:  Optional[str] = None
+
+
+class TerrellOSCaptureRequest(BaseModel):
+    order_id: Optional[str] = None
+    token:    Optional[str] = None
+    plan:     Optional[str] = None
+    email:    Optional[str] = None
+
+
+@checkout_router.post("/create")
+async def terrellos_checkout_create(req: TerrellOSCheckoutRequest):
+    """Create a live PayPal order for TerrellOS credit plans. Called by Pricing.jsx."""
+    plan_info = TERRELLOS_PLANS.get(req.plan)
+    if not plan_info:
+        raise HTTPException(400, f"Unknown plan '{req.plan}'. Valid: {list(TERRELLOS_PLANS.keys())}")
+
+    cid  = PAYPAL_CLIENT_ID
+    csec = PAYPAL_SECRET
+    if not cid or not csec:
+        raise HTTPException(503, "Payment processor not configured.")
+
+    origin      = TERRELLOS_FRONTEND_URL
+    return_url  = req.success_url or f"{origin}/thank-you?plan={req.plan}"
+    cancel_url  = req.cancel_url  or f"{origin}/pricing"
+
+    try:
+        token = await _get_token()
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"{_base()}/v2/checkout/orders",
+                json={
+                    "intent": "CAPTURE",
+                    "purchase_units": [{
+                        "amount": {"currency_code": "USD", "value": plan_info["price"]},
+                        "description": plan_info["name"],
+                    }],
+                    "application_context": {
+                        "brand_name": "TerrellOS",
+                        "landing_page": "BILLING",
+                        "user_action": "PAY_NOW",
+                        "return_url": return_url,
+                        "cancel_url": cancel_url,
+                    },
+                },
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            )
+        if r.status_code not in (200, 201):
+            raise RuntimeError(f"PayPal error {r.status_code}: {r.text[:200]}")
+        order = r.json()
+        checkout_url = next((l["href"] for l in order.get("links", []) if l.get("rel") == "approve"), None)
+        logger.info("TerrellOS checkout order=%s plan=%s amount=%s email=%s",
+                    order.get("id"), req.plan, plan_info["price"], req.email)
+        return {
+            "success":     True,
+            "checkoutUrl": checkout_url,
+            "url":         checkout_url,
+            "orderId":     order.get("id"),
+            "plan":        req.plan,
+            "amount":      plan_info["price"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("terrellos_checkout_create error: %s", e)
+        raise HTTPException(502, f"Checkout failed: {e}")
+
+
+@checkout_router.post("/capture")
+async def terrellos_checkout_capture(req: TerrellOSCaptureRequest):
+    """Capture a TerrellOS PayPal order after buyer approval."""
+    order_id = req.order_id or req.token
+    if not order_id:
+        raise HTTPException(400, "order_id required")
+    try:
+        pp_token = await _get_token()
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                f"{_base()}/v2/checkout/orders/{order_id}/capture",
+                json={},
+                headers={"Authorization": f"Bearer {pp_token}", "Content-Type": "application/json"},
+            )
+        data = r.json()
+        if data.get("status") != "COMPLETED":
+            raise HTTPException(402, f"Capture failed: {data.get('status')}")
+        capture_id  = data.get("purchase_units",[{}])[0].get("payments",{}).get("captures",[{}])[0].get("id")
+        amount_paid = data.get("purchase_units",[{}])[0].get("payments",{}).get("captures",[{}])[0].get("amount",{}).get("value")
+        logger.info("TerrellOS captured order=%s capture=%s amount=%s", order_id, capture_id, amount_paid)
+        return {
+            "success":    True,
+            "plan":       req.plan,
+            "capture_id": capture_id,
+            "amount_paid":amount_paid,
+            "order_id":   order_id,
+            "message":    f"Payment complete! Welcome to TerrellOS {req.plan}!",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("terrellos_capture error: %s", e)
+        raise HTTPException(502, f"Capture failed: {e}")
