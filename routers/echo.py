@@ -22,7 +22,7 @@ class CompanionRequest(BaseModel):
 
 class LegacyRequest(BaseModel):
     user_id: Optional[str] = None
-    prompt: str
+    prompt: Optional[str] = None
     loved_one_name: Optional[str] = None
 
 class GriefRequest(BaseModel):
