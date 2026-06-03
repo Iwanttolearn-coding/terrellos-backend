@@ -362,8 +362,9 @@ Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
 # ── Martyr Study ──────────────────────────────────────────────────────────────
 
 @router.post("/martyr-study")
-async def martyr_study(req: MartyrStudyRequest):
-    content = ai(f"""Provide a detailed historical and theological study of Christian martyr: {req.figure_name}
+async def martyr_study(req: MartyrStudyRequest, request: Request):
+    try:
+        content = ai(f"""Provide a detailed historical and theological study of Christian martyr: {req.figure_name}
 
 Include:
 1. Historical biography and life story
@@ -377,7 +378,13 @@ Include:
 9. Key quotes or writings (if any survive)
 10. Discussion questions for study groups
 11. Prayer of remembrance""", max_tokens=3000)
-    return {"success": True, "figure": req.figure_name, "content": content, "word_count": len(content.split())}
+        _uid_m = _email_from_request(request, "")
+        await save_generated_content(_uid_m, f"Martyr Study: {req.figure_name}", content, "martyr_study", topic=req.figure_name or "")
+        log_usage(endpoint="/v1/pastor/martyr-study", user_id=_uid_m, status="success", model="gpt-4o", provider="openai", extra={"type": "martyr_study", "figure": req.figure_name})
+        return {"success": True, "figure": req.figure_name, "content": content, "word_count": len(content.split())}
+    except Exception as e:
+        log_usage(endpoint="/v1/pastor/martyr-study", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Martyr study failed: {str(e)}")
 
 # ── Church History ────────────────────────────────────────────────────────────
 
@@ -501,21 +508,20 @@ Include:
 # ── History Search ────────────────────────────────────────────────────────────
 
 @router.post("/history/search")
-async def history_search(req: HistorySearchRequest):
-    content = ai(f"""Research and provide detailed information about: {req.query}
+async def history_search(req: HistorySearchRequest, request: Request):
+    try:
+        content = ai(f"""Research and provide detailed information about: {req.query}
 Category: {req.category or "Christian history"}
 
 Provide historical context, key figures, theological significance, and modern relevance.
 Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
-    log_usage(
-        endpoint="/v1/pastor/history/search",
-        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
-        status="success",
-        model="gpt-4o",
-        provider="openai",
-        extra={"type": "history_search", "word_count": len(content.split())},
-    )
-    return {"success": True, "content": content, "word_count": len(content.split())}
+        _uid_hs = _email_from_request(request, getattr(req, "email", "") or "")
+        await save_generated_content(_uid_hs, f"History Search: {req.query[:60]}", content, "history_search", topic=req.query or "")
+        log_usage(endpoint="/v1/pastor/history/search", user_id=_uid_hs, status="success", model="gpt-4o", provider="openai", extra={"type": "history_search", "word_count": len(content.split())})
+        return {"success": True, "content": content, "word_count": len(content.split())}
+    except Exception as e:
+        log_usage(endpoint="/v1/pastor/history/search", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"History search failed: {str(e)}")
 
 
 # ── Saved Content History ─────────────────────────────────────────────────────
