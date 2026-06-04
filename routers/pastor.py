@@ -56,7 +56,7 @@ VOICE:
 - Never robotic. Never bullet-point only. Always flowing, pastoral prose.
 - If someone is hurting, lead with compassion first. Then truth."""
 
-def ai(prompt: str, max_tokens: int = 4000, model: str = "gpt-4o", system_extra: str = "") -> str:
+def ai(prompt: str, max_tokens: int = 4000, model: str = "gpt-4o", system_extra: str = "", temperature: float = 0.75) -> str:
     if not client:
         return "OpenAI not configured. Please add OPENAI_API_KEY to backend secrets."
     system = PASTOR_SYSTEM + (("\n\n" + system_extra) if system_extra else "")
@@ -195,7 +195,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
 **CLOSING PRAYER**
 [Full pastoral prayer, 3-4 paragraphs, directly connected to the sermon theme. Address God directly. Include thanksgiving, confession, petition for the congregation, and declaration of faith.]"""
 
-    content = ai(prompt, max_tokens=4000)
+    content = ai(prompt, max_tokens=8000)
 
     extras = {}
     if req.generateExtras:
