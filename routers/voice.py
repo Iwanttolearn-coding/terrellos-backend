@@ -17,8 +17,8 @@ router = APIRouter(prefix="/v1/voice", tags=["Voice"])
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 HF_API_KEY          = os.getenv("HUGGINGFACE_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
-ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "nPczCjzI2devNBz1zQrb")  # Brian — Deep, Resonant and Comforting
+ELEVENLABS_MODEL    = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 ELEVENLABS_BASE     = "https://api.elevenlabs.io/v1"
 HF_TTS_URL          = "https://router.huggingface.co/hf-inference/models/facebook/mms-tts-eng"
 
@@ -49,7 +49,7 @@ async def _elevenlabs_speak(text: str, voice_id: str, model: str) -> bytes | Non
                 f"{ELEVENLABS_BASE}/text-to-speech/{voice_id}",
                 headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
                 json={"text": text, "model_id": model,
-                      "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}},
+                      "voice_settings": {"stability": 0.35, "similarity_boost": 0.85, "style": 0.45, "use_speaker_boost": True}},
             )
         if r.status_code == 200 and r.content:
             return r.content
