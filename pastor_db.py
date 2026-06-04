@@ -260,6 +260,49 @@ async def save_generated_content(
         return None
 
 
+
+async def ensure_pastor_recordings_table() -> bool:
+    """Create pastor_recordings table if it doesn't exist. Safe to call on every startup."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    # Supabase pg_catalog approach — use RPC exec_sql or direct table probe
+    # Try inserting/selecting to detect table existence
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/pastor_recordings?limit=1",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return True  # Table exists
+        # 404 / 42P01 = table missing — create it via Supabase SQL RPC
+        sql = """
+            CREATE TABLE IF NOT EXISTS pastor_recordings (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT 'Untitled Recording',
+                transcript TEXT DEFAULT '',
+                summary TEXT DEFAULT '',
+                duration_sec INTEGER DEFAULT 0,
+                tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+                audio_url TEXT,
+                generated_at TIMESTAMPTZ DEFAULT now(),
+                created_at TIMESTAMPTZ DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS idx_pastor_recordings_user ON pastor_recordings(user_id);
+        """
+        async with httpx.AsyncClient(timeout=15) as c:
+            rpc = await c.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
+                headers=_headers(),
+                json={"query": sql},
+            )
+        logger.info("pastor_recordings table create attempt: %s", rpc.status_code)
+        return rpc.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning("ensure_pastor_recordings_table error: %s", e)
+        return False
+
 async def save_recording(
     user_id: str,
     title: str,
