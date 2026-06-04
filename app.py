@@ -19,6 +19,7 @@ from routers.core    import router as core_router
 from routers.memory  import router as memory_router
 from routers.voice   import router as voice_router
 from routers.pastor      import router as pastor_router
+from routers.bible       import router as bible_router
 from routers.word_study  import router as word_study_router
 from routers.echo    import router as echo_router, companion_router
 from routers.design  import router as design_router
@@ -151,6 +152,7 @@ app.include_router(core_router)
 app.include_router(memory_router)
 app.include_router(voice_router)
 app.include_router(pastor_router)
+app.include_router(bible_router)
 app.include_router(word_study_router)
 app.include_router(echo_router)
 app.include_router(companion_router)
