@@ -246,6 +246,7 @@ Pastoral encouragement: [Warm, personal pastoral note]
     )
     return {
         "success": True,
+        "type": "sermon",
         "content": content,
         "scripture": ref,
         "style": style,
@@ -673,6 +674,73 @@ async def delete_recording_endpoint(request: Request, recording_id: str, email: 
     uid = _email_from_request(request, email or "")
     deleted = await delete_item("pastor_recordings", recording_id, uid)
     return {"success": deleted}
+
+
+
+# ── Humor endpoint (dedicated — avoids core chat routing) ────────────────────
+
+class HumorRequest(BaseModel):
+    topic: Optional[str] = "clean"
+    context: Optional[str] = ""
+    language: Optional[str] = "en"
+    email: Optional[str] = ""
+
+@router.post("/humor")
+async def humor_endpoint(req: HumorRequest, request: Request):
+    lang_instructions = {
+        "es": "IMPORTANT: Respond entirely in Spanish.",
+        "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
+    }
+    lang_note = lang_instructions.get(req.language or "en", "")
+    topic = req.topic or "clean"
+    context = req.context or ""
+    topic_prompts = {
+        "clean":   "Share 3 clean, genuinely funny Christian jokes or light church humor appropriate for all ages.",
+        "church":  "Share 3 funny, relatable observations about church culture and congregational life.",
+        "pastor":  "Share 3 funny pastor or sermon stories (appropriate, light-hearted).",
+        "kids":    "Share 3 funny Sunday School or children's ministry moments.",
+        "holiday": "Share 3 funny Christian holiday observations (Christmas, Easter, etc.).",
+    }
+    prompt = (topic_prompts.get(topic, f"Share some clean Christian humor about {topic}."))
+    if context: prompt += f" Context: {context}"
+    if lang_note: prompt = lang_note + "\n\n" + prompt
+    content = ai(prompt, max_tokens=800)
+    return {"success": True, "content": content, "word_count": len(content.split()), "type": "humor"}
+
+
+# ── Prayer endpoint ────────────────────────────────────────────────────────────
+
+class PrayerRequest(BaseModel):
+    prayer_type: Optional[str] = "general"
+    context: Optional[str] = ""
+    language: Optional[str] = "en"
+    email: Optional[str] = ""
+
+@router.post("/prayer")
+async def prayer_endpoint(req: PrayerRequest, request: Request):
+    lang_instructions = {
+        "es": "IMPORTANT: Respond entirely in Spanish.",
+        "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
+    }
+    lang_note = lang_instructions.get(req.language or "en", "")
+    ptype = req.prayer_type or "general"
+    ctx   = req.context or ""
+    type_prompts = {
+        "morning":     "Write a heartfelt morning prayer to start the day with God's presence. 150-200 words.",
+        "evening":     "Write a peaceful evening prayer giving thanks and seeking rest in God. 150-200 words.",
+        "intercession":"Write an intercessory prayer for others. 200-250 words.",
+        "healing":     "Write a powerful prayer for physical and spiritual healing. 200-250 words.",
+        "salvation":   "Write a salvation prayer for new believers. 150-200 words.",
+        "family":      "Write a prayer for families — marriages, children, and homes. 200-250 words.",
+        "grief":       "Write a prayer of comfort and healing for those experiencing grief or loss. 200-250 words.",
+        "blessing":    "Write a blessing and dedication prayer for people and new endeavors. 150-200 words.",
+        "general":     "Write a sincere, Spirit-led prayer for a congregation or individual. 150-250 words.",
+    }
+    prompt = type_prompts.get(ptype, type_prompts["general"])
+    if ctx: prompt += f" Context/specific requests: {ctx}"
+    if lang_note: prompt = lang_note + "\n\n" + prompt
+    content = ai(prompt, max_tokens=600)
+    return {"success": True, "content": content, "word_count": len(content.split()), "type": "prayer"}
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
