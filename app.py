@@ -191,6 +191,21 @@ async def root(request: Request):
         "time": datetime.now(timezone.utc).isoformat(),
     }
 
+
+@app.on_event("startup")
+async def _ensure_pastor_tables():
+    """Ensure pastor_recordings table exists on startup."""
+    try:
+        from pastor_db import ensure_pastor_recordings_table
+        result = await ensure_pastor_recordings_table()
+        if result:
+            print("[startup] ✅ pastor_recordings table ready")
+        else:
+            print("[startup] ⚠️  pastor_recordings table check skipped (no DB config)")
+    except Exception as e:
+        print(f"[startup] ❌ pastor_recordings ensure error: {e}")
+
+
 @app.get("/health")
 async def health(request: Request):
     app_id = getattr(request.state, "app_id", "terrellos")
