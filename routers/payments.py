@@ -14,7 +14,7 @@ logger = logging.getLogger("payments")
 PASTOR_FRONTEND_URL = os.getenv("PASTOR_FRONTEND_URL", "https://pastoraiconnect.com")
 PAYPAL_CLIENT_ID    = os.getenv("PAYPAL_CLIENT_ID", "")
 PAYPAL_SECRET       = os.getenv("PAYPAL_CLIENT_SECRET", "")  # matches paypal.py convention
-PAYPAL_ENV          = os.getenv("PAYPAL_ENV", "sandbox")
+PAYPAL_ENV          = os.getenv("PAYPAL_ENV", "live")
 
 PASTOR_PLANS = {
     "trial_7day": {"price": "1.00",  "name": "Pastor AI — 7-Day Trial",  "days": 7},
