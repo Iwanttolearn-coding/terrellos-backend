@@ -60,7 +60,7 @@ async def save_sermon(
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(
                 f"{SUPABASE_URL}/rest/v1/pastor_sermons",
-                headers=_headers(),
+                headers={**_headers(), "Prefer": "return=representation"},
                 json=data,
             )
         if r.status_code in (200, 201):
@@ -108,7 +108,7 @@ async def save_bible_study(
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(
                 f"{SUPABASE_URL}/rest/v1/pastor_bible_studies",
-                headers=_headers(),
+                headers={**_headers(), "Prefer": "return=representation"},
                 json=data,
             )
         if r.status_code in (200, 201):
@@ -147,7 +147,7 @@ async def save_transcript(
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(
                 f"{SUPABASE_URL}/rest/v1/pastor_transcripts",
-                headers=_headers(),
+                headers={**_headers(), "Prefer": "return=representation"},
                 json=data,
             )
         if r.status_code in (200, 201):
@@ -248,7 +248,7 @@ async def save_generated_content(
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(
                 f"{SUPABASE_URL}/rest/v1/pastor_transcripts",
-                headers=_headers(),
+                headers={**_headers(), "Prefer": "return=representation"},
                 json=data,
             )
         if r.status_code in (200, 201):
@@ -283,9 +283,10 @@ async def save_recording(
             "generated_at": _now(),
         }
         async with httpx.AsyncClient(timeout=15) as c:
+            post_headers = {**_headers(), "Prefer": "return=representation"}
             r = await c.post(
                 f"{SUPABASE_URL}/rest/v1/pastor_recordings",
-                headers=_headers(),
+                headers=post_headers,
                 json=data,
             )
         if r.status_code in (200, 201):
