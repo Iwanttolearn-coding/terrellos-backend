@@ -18,7 +18,7 @@ jobs:
           flyctl secrets set \
             PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
             PAYPAL_CLIENT_SECRET="${{ secrets.PAYPAL_CLIENT_SECRET }}" \
-            PAYPAL_ENV="live" \
+            PAYPAL_ENV="${{ secrets.PAYPAL_ENV }}" \
             PASTOR_FRONTEND_URL="https://pastoraiconnect.com" \
             --app terrellos-backend --stage
         env:
