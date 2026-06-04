@@ -10,20 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      
-      - name: Set PayPal & env secrets on Fly.io
+
+      - name: Set PayPal secrets on Fly.io
         run: |
           flyctl secrets set \
-            PAYPAL_CLIENT_ID="AVctVPOkSe-NR6frTwLTP17Xs9LCj451uZcNkyvspzesWbmKCOQw67Ujm3G9DPAJ2_7c3K8qUGWU8QYi" \
-            PAYPAL_CLIENT_SECRET="EEPgr9rIiyPV2sCLmiKmSH_iHktAsIW0hs1noWiG7vh9Widle4A4mIHz9f9cznGwY1qLkNBwjGwwBtT7" \
+            PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
+            PAYPAL_CLIENT_SECRET="${{ secrets.PAYPAL_CLIENT_SECRET }}" \
             PAYPAL_ENV="live" \
             PASTOR_FRONTEND_URL="https://pastoraiconnect.com" \
             --app terrellos-backend --stage
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      
+
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only -a terrellos-backend
         env:
