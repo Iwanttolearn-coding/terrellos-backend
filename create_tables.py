@@ -107,6 +107,23 @@ TABLES = {
     """,
     "idx_pastor_voice_user": "CREATE INDEX IF NOT EXISTS idx_pastor_voice_user ON pastor_voice_recordings(user_id)",
 
+
+    "pastor_recordings": """
+        CREATE TABLE IF NOT EXISTS pastor_recordings (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT 'Untitled Recording',
+            transcript TEXT DEFAULT '',
+            summary TEXT DEFAULT '',
+            duration_sec INTEGER DEFAULT 0,
+            tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+            audio_url TEXT,
+            generated_at TIMESTAMPTZ DEFAULT now(),
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+    """,
+    "idx_pastor_recordings_user": "CREATE INDEX IF NOT EXISTS idx_pastor_recordings_user ON pastor_recordings(user_id)",
+
     "pastor_generations": """
         CREATE TABLE IF NOT EXISTS pastor_generations (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
