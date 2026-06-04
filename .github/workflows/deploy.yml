@@ -20,12 +20,14 @@ jobs:
           PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
           PAYPAL_ENV: ${{ secrets.PAYPAL_ENV }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
         run: |
           flyctl secrets set \
             PAYPAL_CLIENT_ID="$PAYPAL_CLIENT_ID" \
             PAYPAL_CLIENT_SECRET="$PAYPAL_CLIENT_SECRET" \
             PAYPAL_ENV="$PAYPAL_ENV" \
             ELEVENLABS_API_KEY="$ELEVENLABS_API_KEY" \
+            ELEVENLABS_VOICE_ID="$ELEVENLABS_VOICE_ID" \
             PASTOR_FRONTEND_URL="https://pastoraiconnect.com" \
             --app terrellos-backend --stage
 
