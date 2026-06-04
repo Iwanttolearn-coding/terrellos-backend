@@ -13,18 +13,21 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Set PayPal secrets on Fly.io
+      - name: Set PayPal & env secrets on Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_ENV: ${{ secrets.PAYPAL_ENV }}
         run: |
           flyctl secrets set \
-            PAYPAL_CLIENT_ID="${{ secrets.PAYPAL_CLIENT_ID }}" \
-            PAYPAL_CLIENT_SECRET="${{ secrets.PAYPAL_CLIENT_SECRET }}" \
-            PAYPAL_ENV="${{ secrets.PAYPAL_ENV }}" \
+            PAYPAL_CLIENT_ID="$PAYPAL_CLIENT_ID" \
+            PAYPAL_CLIENT_SECRET="$PAYPAL_CLIENT_SECRET" \
+            PAYPAL_ENV="$PAYPAL_ENV" \
             PASTOR_FRONTEND_URL="https://pastoraiconnect.com" \
             --app terrellos-backend --stage
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only -a terrellos-backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only -a terrellos-backend
