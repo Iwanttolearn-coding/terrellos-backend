@@ -27,6 +27,7 @@ PAYPAL_API         = "https://api-m.paypal.com"   # LIVE — always
 CLIENT_ID          = os.getenv("PAYPAL_CLIENT_ID",     "AfOAEYZy_5A6lLkI0yo6ejxHyps2esDOx0Hw8Q8FhsJQqaYMoV-cYanygCJ_5hBz10pade1JMAWMbqmG")
 CLIENT_SECRET      = os.getenv("PAYPAL_CLIENT_SECRET", "EPtRt43JdL51o-fPJgMh_WX-d9AOKAA-FOZIyCNauOIoXzs7eth13AW4FaLSoM6usqai4Yuyw0runT4x")
 REFUND_WINDOW_DAYS = 7
+PAYPAL_WEBHOOK_ID  = os.getenv("PAYPAL_WEBHOOK_ID", "8CE33197GL084972H")
 
 PLANS = {
     "basic":       {"price": "19.00",  "name": "TM Dezigns Basic"},
