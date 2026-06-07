@@ -889,3 +889,41 @@ async def course_lessons(course_id: str, request: Request):
         "course_name": course["name"],
         "lessons": [{"index": i+1, "title": l} for i, l in enumerate(course["lessons"])],
     }
+
+# ── Summarize Transcript ─────────────────────────────────────────────────────
+class SummarizeRequest(BaseModel):
+    transcript: str = ""
+    language:   str = "en"
+
+@router.post("/summarize-transcript")
+async def summarize_transcript_endpoint(req: SummarizeRequest, request: Request):
+    """Auto-summarize a sermon or meeting transcript using GPT."""
+    uid = _get_uid(request)
+    text = (req.transcript or "").strip()
+    if not text:
+        return {"success": False, "error": "No transcript provided"}
+
+    prompt = f"""You are Pastor Mills AI. A sermon or meeting has just been transcribed.
+Provide a concise, Spirit-filled summary of the following transcript.
+
+Structure your summary as:
+1. TITLE — A short, memorable title for this session
+2. KEY POINTS — 3-5 bullet points capturing the main ideas
+3. SCRIPTURE — Any Bible verses referenced or implied
+4. TAKEAWAY — One powerful sentence the listener should remember
+
+Transcript:
+{text[:6000]}
+
+Summary:"""
+
+    import openai, os as _os
+    client = openai.AsyncOpenAI(api_key=_os.environ.get("OPENAI_API_KEY",""))
+    resp = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=600,
+        temperature=0.5,
+    )
+    summary = resp.choices[0].message.content.strip()
+    return {"success": True, "summary": summary}
