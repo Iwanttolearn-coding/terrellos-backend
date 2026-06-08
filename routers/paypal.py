@@ -86,9 +86,9 @@ async def create_order(req: CreateOrderReq):
         r = await c.post(f"{PAYPAL_API}/v2/checkout/orders", headers=hdrs, json={
             "intent": "CAPTURE",
             "purchase_units": [{"amount": {"currency_code": req.currency, "value": plan_info["price"]},
-                                "description": f"TM Dezigns — {plan_info['name']}"}],
+                                "description": f"TerrellOS — {plan_info['name']}"}],
             "application_context": {
-                "brand_name": "TM Dezigns",
+                "brand_name": "TerrellOS",
                 "shipping_preference": "NO_SHIPPING",
                 "user_action": "PAY_NOW",
                 "return_url": req.return_url or "https://app.tm-dezigns.com/billing?status=success",
