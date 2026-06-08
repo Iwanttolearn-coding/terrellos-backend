@@ -30,7 +30,7 @@ from routers.tattoo  import router as tattoo_router
 from routers.gallery import router as gallery_router
 from routers.auth    import router as auth_router
 from routers.system import router as system_router
-from routers.paypal          import router as paypal_router
+from routers.paypal          import router as paypal_router, billing_router
 from routers.payments        import router as payments_router, checkout_router
 from routers.voice_interview import router as voice_interview_router
 from routers.db           import router as db_router
@@ -162,6 +162,7 @@ app.include_router(design_router)
 app.include_router(founder_router)
 app.include_router(admin_router)
 app.include_router(db_router)
+app.include_router(billing_router)
 app.include_router(fn_router)
 app.include_router(uploads_router)
 app.include_router(tattoo_router)
