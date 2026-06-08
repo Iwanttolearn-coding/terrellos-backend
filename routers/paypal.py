@@ -232,3 +232,18 @@ async def admin_transactions():
 @router.get("/admin/refunds")
 async def admin_refunds():
     return {"message": "Wire to your DB — query refund_log table", "status": "ok"}
+
+
+# ── Billing alias routes (maps /v1/billing/* used by TerrellOS frontend) ──────
+from fastapi import APIRouter as _AR
+billing_router = _AR(prefix="/v1/billing", tags=["Billing"])
+
+@billing_router.get("/plans")
+async def billing_plans():
+    """Alias for /v1/paypal/plans — used by TerrellOS frontend."""
+    return await plans()
+
+@billing_router.get("/status")
+async def billing_status():
+    """Alias for /v1/paypal/status."""
+    return await status()
