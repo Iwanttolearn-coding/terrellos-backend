@@ -95,7 +95,7 @@ async def register(payload: RegisterRequest):
     token = create_token(token_data)
     return {
         "success": True,
-        "token": token,
+        "token": token, "access_token": token,
         "user": token_data,
         "message": "Account created successfully",
     }
@@ -117,7 +117,7 @@ async def login(payload: LoginRequest):
         token = create_token(token_data)
         return {
             "success": True,
-            "token": token,
+            "token": token, "access_token": token,
             "user": {**token_data, "display_name": "Terrell Millz"},
             "message": "Founder access granted",
         }
@@ -128,7 +128,7 @@ async def login(payload: LoginRequest):
         token = create_token({k: v for k, v in user.items() if k not in ("password_hint", "registered_at")})
         return {
             "success": True,
-            "token": token,
+            "token": token, "access_token": token,
             "user": user,
             "message": "Welcome back",
         }
@@ -247,4 +247,4 @@ async def founder_bypass(payload: LoginRequest):
         "is_founder": True,
     }
     token = create_token(token_data)
-    return {"success": True, "token": token, "user": token_data}
+    return {"success": True, "token": token, "access_token": token, "user": token_data}
