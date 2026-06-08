@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
 prestart.py — Import validation before Uvicorn starts.
-Catches circular imports, missing deps, and syntax errors early.
-Run by Dockerfile before uvicorn.
+Catches missing deps and syntax errors early.
 """
 import sys, os
 
 print("[prestart] Validating Python environment...")
 
 checks = [
-    ("fastapi", "FastAPI"),
-    ("pydantic", "BaseModel"),
-    ("openai", "OpenAI"),
-    ("httpx", "AsyncClient"),
+    ("fastapi",   "FastAPI"),
+    ("pydantic",  "BaseModel"),
+    ("openai",    "OpenAI"),
+    ("httpx",     "AsyncClient"),
     ("starlette.middleware.cors", "CORSMiddleware"),
 ]
 
@@ -26,12 +25,16 @@ for module, cls in checks:
         print(f"  ❌ {module}.{cls} — {e}")
         ok = False
 
-# Try importing all routers
 print("[prestart] Validating routers...")
-routers = ["core","memory","voice","pastor","echo","design","founder","admin","uploads","tattoo","gallery","auth"]
+routers = [
+    "core","memory","voice","pastor","echo","design",
+    "founder","admin","uploads","tattoo","gallery",
+    "auth","system","paypal","payments","voice_interview",
+    "db","fn",
+]
 for r in routers:
     try:
-        mod = __import__(f"routers.{r}", fromlist=["router"])
+        __import__(f"routers.{r}", fromlist=["router"])
         print(f"  ✅ routers.{r}")
     except Exception as e:
         print(f"  ❌ routers.{r} — {e}", file=sys.stderr)
