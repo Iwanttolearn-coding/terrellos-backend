@@ -33,6 +33,7 @@ from routers.system import router as system_router
 from routers.paypal          import router as paypal_router
 from routers.payments        import router as payments_router, checkout_router
 from routers.voice_interview import router as voice_interview_router
+from routers.db           import router as db_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -159,6 +160,7 @@ app.include_router(companion_router)
 app.include_router(design_router)
 app.include_router(founder_router)
 app.include_router(admin_router)
+app.include_router(db_router)
 app.include_router(uploads_router)
 app.include_router(tattoo_router)
 app.include_router(gallery_router)
