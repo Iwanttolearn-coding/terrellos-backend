@@ -1,130 +1,127 @@
 """
 routers/db.py — TerrellOS Generic Entity CRUD
 Provides /v1/db/:entity REST endpoints for the TerrellOS frontend.
-Replaces Base44 entity SDK — all data stored in Supabase.
-Tables are created on first use if they don't exist.
+Uses Supabase REST API directly via httpx — no supabase-py dependency needed.
 """
-import os, uuid, json
+import os, uuid, httpx
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Request
+from typing import Any, Dict
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from supabase import create_client, Client
 
 router = APIRouter(prefix="/v1/db", tags=["Entity DB"])
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-def get_sb() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+# Whitelisted entity → Supabase table name map
+ENTITY_TABLE = {
+    "BuildLog":           "build_logs",
+    "Project":            "projects",
+    "Upload":             "uploads",
+    "FileVersion":        "file_versions",
+    "AIModelSetting":     "ai_model_settings",
+    "BackendConnection":  "backend_connections",
+    "OwnerControl":       "owner_controls",
+    "Patch":              "patches",
+    "WorkflowState":      "workflow_states",
+    "ReleaseRecord":      "release_records",
+    "StabilityReport":    "stability_reports",
+    "Template":           "templates",
+    "WebhookIntegration": "webhook_integrations",
+    "Workflow":           "workflows",
+    "ProjectTool":        "project_tools",
+    "ProjectIntegration": "project_integrations",
+    "SystemSettings":     "system_settings",
+}
+
+def sb_headers():
+    return {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
-# ── Allowed entity tables (whitelist — prevents arbitrary table injection) ──────
-ALLOWED_ENTITIES = {
-    "BuildLog", "Project", "Upload", "FileVersion", "AIModelSetting",
-    "BackendConnection", "OwnerControl", "Patch", "WorkflowState",
-    "ReleaseRecord", "StabilityReport", "Template", "WebhookIntegration",
-    "Workflow", "ProjectTool", "ProjectIntegration", "SystemSettings",
-}
-
-def validate_entity(entity: str):
-    if entity not in ALLOWED_ENTITIES:
+def validate_entity(entity: str) -> str:
+    if entity not in ENTITY_TABLE:
         raise HTTPException(status_code=400, detail=f"Unknown entity: {entity}")
-    return entity.lower()  # Supabase table names are lowercase
+    return ENTITY_TABLE[entity]
 
-class CreateBody(BaseModel):
-    data: Dict[str, Any] = {}
-
-class UpdateBody(BaseModel):
+class WriteBody(BaseModel):
     data: Dict[str, Any] = {}
 
 class FilterBody(BaseModel):
     query: Dict[str, Any] = {}
 
-# ── LIST ─────────────────────────────────────────────────────────────────────────
+# ── LIST ──────────────────────────────────────────────────────────────────────────
 @router.get("/{entity}")
 async def list_entity(entity: str, sort: str = "-created_date", limit: int = 50):
     tbl = validate_entity(entity)
-    sb  = get_sb()
     col = sort.lstrip("-")
     asc = not sort.startswith("-")
-    try:
-        res = sb.table(tbl).select("*").order(col, desc=not asc).limit(limit).execute()
-        return {"data": res.data or []}
-    except Exception as e:
-        return {"data": [], "error": str(e)}
+    order_param = f"{col}.asc" if asc else f"{col}.desc"
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}?order={order_param}&limit={limit}&select=*"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, headers=sb_headers())
+    return {"data": r.json() if r.is_success else []}
 
 # ── GET ───────────────────────────────────────────────────────────────────────────
 @router.get("/{entity}/{item_id}")
 async def get_entity(entity: str, item_id: str):
     tbl = validate_entity(entity)
-    sb  = get_sb()
-    try:
-        res = sb.table(tbl).select("*").eq("id", item_id).limit(1).execute()
-        if not res.data:
-            raise HTTPException(status_code=404, detail="Not found")
-        return {"data": res.data[0]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}?id=eq.{item_id}&select=*&limit=1"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, headers=sb_headers())
+    rows = r.json() if r.is_success else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"data": rows[0]}
 
 # ── FILTER ────────────────────────────────────────────────────────────────────────
 @router.post("/{entity}/filter")
 async def filter_entity(entity: str, body: FilterBody, sort: str = "-created_date"):
     tbl = validate_entity(entity)
-    sb  = get_sb()
     col = sort.lstrip("-")
     asc = not sort.startswith("-")
-    try:
-        q = sb.table(tbl).select("*").order(col, desc=not asc)
-        for k, v in body.query.items():
-            q = q.eq(k, v)
-        res = q.execute()
-        return {"data": res.data or []}
-    except Exception as e:
-        return {"data": [], "error": str(e)}
+    order_param = f"{col}.asc" if asc else f"{col}.desc"
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}?order={order_param}&select=*"
+    for k, v in body.query.items():
+        url += f"&{k}=eq.{v}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, headers=sb_headers())
+    return {"data": r.json() if r.is_success else []}
 
 # ── CREATE ────────────────────────────────────────────────────────────────────────
 @router.post("/{entity}")
-async def create_entity(entity: str, body: CreateBody):
+async def create_entity(entity: str, body: WriteBody):
     tbl = validate_entity(entity)
-    sb  = get_sb()
-    record = {
-        "id": str(uuid.uuid4()),
-        "created_date": now_iso(),
-        "updated_date": now_iso(),
-        **body.data,
-    }
-    try:
-        res = sb.table(tbl).insert(record).execute()
-        return {"data": res.data[0] if res.data else record}
-    except Exception as e:
-        # Table may not exist — return the record as-is (graceful degradation)
-        return {"data": record, "warning": f"DB write skipped: {e}"}
+    record = {"id": str(uuid.uuid4()), "created_date": now_iso(), "updated_date": now_iso(), **body.data}
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(url, json=record, headers=sb_headers())
+    rows = r.json() if r.is_success else None
+    return {"data": (rows[0] if isinstance(rows, list) and rows else record)}
 
 # ── UPDATE ────────────────────────────────────────────────────────────────────────
 @router.put("/{entity}/{item_id}")
-async def update_entity(entity: str, item_id: str, body: UpdateBody):
+async def update_entity(entity: str, item_id: str, body: WriteBody):
     tbl = validate_entity(entity)
-    sb  = get_sb()
     patch = {**body.data, "updated_date": now_iso()}
-    try:
-        res = sb.table(tbl).update(patch).eq("id", item_id).execute()
-        return {"data": res.data[0] if res.data else patch}
-    except Exception as e:
-        return {"data": patch, "warning": str(e)}
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}?id=eq.{item_id}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.patch(url, json=patch, headers=sb_headers())
+    rows = r.json() if r.is_success else None
+    return {"data": rows[0] if isinstance(rows, list) and rows else patch}
 
 # ── DELETE ────────────────────────────────────────────────────────────────────────
 @router.delete("/{entity}/{item_id}")
 async def delete_entity(entity: str, item_id: str):
     tbl = validate_entity(entity)
-    sb  = get_sb()
-    try:
-        sb.table(tbl).delete().eq("id", item_id).execute()
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "warning": str(e)}
+    url = f"{SUPABASE_URL}/rest/v1/{tbl}?id=eq.{item_id}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.delete(url, headers=sb_headers())
+    return {"ok": r.is_success}
