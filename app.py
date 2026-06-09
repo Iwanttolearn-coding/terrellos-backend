@@ -108,7 +108,7 @@ def get_founder_override(email: Optional[str]) -> Optional[Dict]:
 # ── FastAPI init ───────────────────────────────────────────────────────────────
 app = FastAPI(
     title="TerrellOS Orchestration Core",
-    version="9.2.0-bail-flow",
+    version="9.3.0-production-ready",
     description="Universal AI OS — Powers entire TM Designs ecosystem",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -193,7 +193,7 @@ async def root(request: Request):
     return {
         "success": True,
         "service": "TerrellOS Orchestration Core",
-        "version": "9.2.0-bail-flow",
+        "version": "9.3.0-production-ready",
         "resolved_app": cfg["name"],
         "app_id": app_id,
         "status": "online",
@@ -224,7 +224,7 @@ async def health(request: Request):
     return {
         "success": True,
         "status": "healthy",
-        "version": "9.2.0-bail-flow",
+        "version": "9.3.0-production-ready",
         "app_id": app_id,
         "fastapi": "online",
         "openai_configured": bool(OPENAI_API_KEY),
@@ -293,7 +293,7 @@ async def status(request: Request):
     cfg = APP_REGISTRY.get(app_id, APP_REGISTRY["terrellos"])
     return {
         "service": cfg["name"],
-        "version": "9.2.0-bail-flow",
+        "version": "9.3.0-production-ready",
         "status": "online",
         "app_id": app_id,
         "capabilities": {
