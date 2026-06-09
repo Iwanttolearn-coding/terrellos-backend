@@ -159,3 +159,50 @@ async def companion_voice(payload: CompanionVoiceRequest):
         return {"success": False, "error": f"ElevenLabs error {r.status_code}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ── /v1/echo/companions — CRUD for frontend CompanionSetup ───────────────────
+import uuid as _uuid
+_companion_store: dict = {}   # user_email -> [companion, ...]
+
+class CreateCompanionReq(BaseModel):
+    user_email: str
+    name: str
+    relationship: Optional[str] = None
+    biography_summary: Optional[str] = None
+    is_active: Optional[bool] = True
+
+@router.get("/companions")
+async def list_companions(user_email: str):
+    """Return companions for a user."""
+    comps = _companion_store.get(user_email, [])
+    return {"success": True, "companions": comps, "total": len(comps)}
+
+@router.post("/companions")
+async def create_companion(payload: CreateCompanionReq):
+    """Create a new AI companion."""
+    companion = {
+        "id":                str(_uuid.uuid4()),
+        "user_email":        payload.user_email,
+        "name":              payload.name,
+        "relationship":      payload.relationship or "",
+        "biography_summary": payload.biography_summary or "",
+        "is_active":         payload.is_active,
+        "training_status":   "pending",
+        "biography_answers_count": 0,
+        "voice_samples_count": 0,
+        "ai_companion_unlocked": False,
+    }
+    if payload.user_email not in _companion_store:
+        _companion_store[payload.user_email] = []
+    _companion_store[payload.user_email].append(companion)
+    return {"success": True, "companion": companion}
+
+@router.delete("/companions/{companion_id}")
+async def delete_companion(companion_id: str, user_email: str):
+    """Delete a companion by ID."""
+    if user_email in _companion_store:
+        _companion_store[user_email] = [
+            c for c in _companion_store[user_email] if c["id"] != companion_id
+        ]
+    return {"success": True}
