@@ -510,32 +510,133 @@ Always lead with compassion and Scripture. Never minimize real pain.""", max_tok
 # ── Discipleship ──────────────────────────────────────────────────────────────
 
 @router.post("/discipleship")
-async def discipleship(req: SimpleRequest, request: Request):
-    content = ai(f"""Create a complete discipleship curriculum for: {req.topic or "new believers"}
+async def discipleship(request: Request):
+    body = await request.json()
 
-Include:
-1. Overview and discipleship goals
-2. Week-by-week curriculum (6 weeks minimum)
-   - Each week: theme, scripture, discussion questions, assignment, memory verse
-3. Spiritual disciplines to practice throughout
-4. Accountability questions for weekly check-ins
-5. Recommended books/resources
-6. Service/outreach component
-7. Assessment questions for measuring growth
-8. Graduation/completion next steps and celebration ideas""", max_tokens=3000)
-    _uid5 = _email_from_request(request, req.email or "")
-    await save_generated_content(_uid5, f"Discipleship: {req.topic or 'Growth Plan'}", content, "discipleship", topic=req.topic or "")
-    log_usage(
-        endpoint="/v1/pastor/discipleship",
-        user_id=_email_from_request(request, getattr(req, "email", "") or ""),
-        status="success",
-        model="gpt-4o",
-        provider="openai",
-        extra={"type": "discipleship", "word_count": len(content.split())},
-    )
-    return {"success": True, "content": content, "word_count": len(content.split())}
+    track       = body.get("track", "new_believer")
+    track_label = body.get("track_label", "New Believer Basics")
+    week        = int(body.get("week", 1))
+    total_weeks = int(body.get("total_weeks", 6))
+    denomination = body.get("denomination", "").strip()
+    audience    = body.get("audience", "").strip()
+    custom_topic = body.get("custom_topic", "").strip()
+    email       = body.get("email", "")
+    app_id      = body.get("app_id", "pastor-ai-connect")
 
-# ── History Search ────────────────────────────────────────────────────────────
+    # Build denomination/audience context
+    denom_context = ""
+    if denomination:
+        denom_context = f"This class is for a {denomination} congregation. Adapt language, worship references, and theological nuances accordingly."
+    if audience:
+        denom_context += f" Target audience: {audience}."
+    if not denom_context:
+        denom_context = "This class should be suitable for ANY Christian denomination — use broadly accepted evangelical Christian language, avoid denominational jargon, and focus on core biblical truth."
+
+    # Build track-specific objectives
+    track_objectives = {
+        "new_believer":   "Help new believers understand salvation, baptism, prayer, Bible reading, church community, and their new identity in Christ.",
+        "foundations":    "Build a solid theological foundation covering the nature of God, Scripture, sin, redemption, Holy Spirit, and the Church.",
+        "spiritual_disc": "Train believers in consistent spiritual disciplines: prayer, fasting, Scripture memorization, solitude, worship, and service.",
+        "prayer_life":    "Develop a rich, consistent prayer life covering types of prayer, intercession, warfare, listening prayer, and breakthrough.",
+        "bible_reading":  "Establish lifelong Bible reading habits — plans, journaling, inductive study, memorization, and application methods.",
+        "evangelism":     "Equip believers to confidently share their faith — personal testimony, gospel presentations, overcoming objections, and follow-up.",
+        "stewardship":    "Teach biblical stewardship of time, talent, finances, relationships, and calling.",
+        "leadership":     "Develop servant leaders who understand biblical authority, team-building, vision-casting, accountability, and spiritual warfare.",
+        "marriage_disc":  "Strengthen marriages through biblical roles, communication, intimacy, conflict resolution, prayer partnership, and covenant commitment.",
+        "youth_disc":     "Engage youth with discipleship covering identity in Christ, peer pressure, purity, purpose, faith under fire, and kingdom calling.",
+    }
+    objective = track_objectives.get(track, f"Disciple believers in {track_label}.")
+
+    prompt = f"""You are an expert discipleship curriculum writer for Christian ministry.
+
+TRACK: {track_label} ({total_weeks}-week course)
+WEEK: {week} of {total_weeks}
+OBJECTIVE: {objective}
+{f'CUSTOM FOCUS: {custom_topic}' if custom_topic else ''}
+DENOMINATION CONTEXT: {denom_context}
+
+Generate a COMPLETE, READY-TO-USE Week {week} discipleship class lesson. This must be fully self-contained — the pastor should be able to print this out and teach it immediately without adding anything.
+
+Format your response EXACTLY as follows:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 {track_label.upper()} — WEEK {week} OF {total_weeks}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 LESSON TITLE
+[Compelling, specific title for this week's lesson]
+
+📖 CORE SCRIPTURE
+[1–2 key scriptures with full text, Bible version]
+
+🌟 LESSON OVERVIEW (2–3 sentences)
+[What this week covers and why it matters]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⏰ CLASS OUTLINE (60-minute session)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 OPENING (10 min)
+• Welcome & prayer
+• [Ice-breaker question or warm-up activity specific to this week's topic]
+• Review last week's assignment (if applicable)
+
+📖 TEACHING (25 min)
+[3–4 substantial teaching points, each with:
+  - Bold heading
+  - 2–3 paragraphs of teaching content
+  - Supporting scripture references
+  - Real-life application example]
+
+💬 DISCUSSION (15 min)
+1. [Deep, thought-provoking discussion question 1]
+2. [Discussion question 2]
+3. [Discussion question 3]
+4. [Discussion question 4]
+
+🙏 RESPONSE & PRAYER (10 min)
+• [Specific prayer focus for this week]
+• [Personal reflection prompt]
+• Ministry moment / altar call if applicable
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 WEEK {week} ASSIGNMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 Scripture Reading
+[3–5 specific passages to read this week]
+
+✍️ Journal Prompt
+[Specific journaling question tied to this week's teaching]
+
+🎯 Weekly Challenge
+[One practical action step to complete before next class]
+
+📿 Memory Verse
+[One verse to memorize this week, with full text]
+
+🔁 Accountability Questions
+[3 questions for accountability partner check-ins]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 FACILITATOR NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• [Tip for leading this specific lesson well]
+• [Potential sensitive areas or pastoral care moments to watch for]
+• [How this week connects to next week]
+• Materials needed: [list any supplies, handouts, etc.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Make this lesson RICH, DETAILED, and immediately usable. Do NOT use placeholders. Write real teaching content, real scripture references, real discussion questions. This is for actual ministry use."""
+
+    content = ai(prompt, max_tokens=4000)
+    uid = _email_from_request(request, email)
+    await save_generated_content(uid, f"Discipleship Week {week}: {track_label}", content, "discipleship")
+    return {"content": content, "track": track, "track_label": track_label, "week": week,
+            "total_weeks": total_weeks, "denomination": denomination or "All Denominations",
+            "word_count": len(content.split())}
+
 
 @router.post("/history/search")
 async def history_search(req: HistorySearchRequest, request: Request):
