@@ -21,7 +21,7 @@ from routers.voice   import router as voice_router
 from routers.pastor      import router as pastor_router
 from routers.bible       import router as bible_router
 from routers.word_study  import router as word_study_router
-from routers.echo    import router as echo_router, companion_router
+from routers.echo    import router as echo_router
 from routers.design  import router as design_router
 from routers.founder import router as founder_router
 from routers.admin   import router as admin_router
@@ -184,7 +184,6 @@ app.include_router(payments_router)
 app.include_router(checkout_router)
 app.include_router(voice_interview_router)
 app.include_router(bail_router)
-app.include_router(companion_router)
 app.include_router(subscriptions_router)
 app.include_router(transcribe_router)
 app.include_router(legacy_router)
