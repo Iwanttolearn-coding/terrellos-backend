@@ -366,3 +366,10 @@ async def terrellos_checkout_capture(req: TerrellOSCaptureRequest):
     except Exception as e:
         logger.error("terrellos_capture error: %s", e)
         raise HTTPException(502, f"Capture failed: {e}")
+
+@router.get("/health")
+async def payments_health():
+    import os
+    return {"success": True, "status": "online", "service": "Payments",
+            "paypal": bool(os.getenv("PAYPAL_CLIENT_ID")),
+            "features": ["checkout","capture","plans","trial"]}
