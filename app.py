@@ -35,6 +35,7 @@ from routers.payments        import router as payments_router, checkout_router
 from routers.voice_interview import router as voice_interview_router
 from routers.db           import router as db_router
 from routers.fn           import router as fn_router
+from routers.bail          import router as bail_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -124,6 +125,9 @@ _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
     "https://residentsyncai.com",
     "http://localhost:5173",
     "http://localhost:3000",
+    "https://hee-frontend.onrender.com",
+    "https://terrellos-frontend.onrender.com",
+    "https://pro-se-ai.onrender.com",
 ]
 
 app.add_middleware(
@@ -173,6 +177,7 @@ app.include_router(paypal_router, prefix="/v1/paypal", tags=["PayPal Payments"])
 app.include_router(payments_router)
 app.include_router(checkout_router)
 app.include_router(voice_interview_router)
+app.include_router(bail_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
