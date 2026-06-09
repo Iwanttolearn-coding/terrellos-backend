@@ -248,3 +248,8 @@ async def founder_bypass(payload: LoginRequest):
     }
     token = create_token(token_data)
     return {"success": True, "token": token, "access_token": token, "user": token_data}
+
+@router.get("/health")
+async def auth_health():
+    import os
+    return {"success": True, "status": "online", "service": "Auth", "supabase": bool(os.getenv("SUPABASE_URL"))}
