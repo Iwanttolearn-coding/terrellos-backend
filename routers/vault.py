@@ -162,77 +162,72 @@ async def vault_count(user_email: str, app_id: Optional[str] = None):
     return {"success": True, "count": count}
 
 
-# ── Migrate (one-shot table creation) ────────────────────────────────────────
+
+# ── Migrate (one-shot table creation via Supabase Management API) ─────────────
 @router.post("/migrate")
 async def vault_migrate(secret: str = ""):
-    """One-shot: create saved_items table. Call once from admin only."""
-    import os
+    """One-shot: create saved_items table using Supabase Management API."""
     expected = os.getenv("ADMIN_SECRET", "terrellos-admin-2026")
     if secret != expected:
         raise HTTPException(status_code=403, detail="Forbidden")
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
-    # Use Supabase's pg meta API (available on all projects)
-    create_sql = (
-        "CREATE TABLE IF NOT EXISTS public.saved_items ("
-        "id text PRIMARY KEY DEFAULT gen_random_uuid()::text,"
-        "user_email text NOT NULL,"
-        "type text NOT NULL,"
-        "title text NOT NULL,"
-        "content jsonb NOT NULL DEFAULT '{}',"
-        "app_id text NOT NULL DEFAULT 'pastor-ai-connect',"
-        "tags jsonb NOT NULL DEFAULT '[]',"
-        "notes text NOT NULL DEFAULT '',"
-        "metadata jsonb NOT NULL DEFAULT '{}',"
-        "created_at timestamptz NOT NULL DEFAULT now(),"
-        "updated_at timestamptz NOT NULL DEFAULT now()"
-        ");"
-        "CREATE INDEX IF NOT EXISTS idx_saved_items_user ON public.saved_items(user_email);"
-        "CREATE INDEX IF NOT EXISTS idx_saved_items_app  ON public.saved_items(app_id);"
-        "CREATE INDEX IF NOT EXISTS idx_saved_items_type ON public.saved_items(type);"
-    )
+    # Extract project ref from URL: https://<ref>.supabase.co
+    import re
+    m = re.match(r"https://([a-z0-9]+)\.supabase\.co", SUPABASE_URL)
+    if not m:
+        raise HTTPException(status_code=500, detail=f"Cannot parse project ref from {SUPABASE_URL}")
+    project_ref = m.group(1)
 
-    # Try Supabase pg meta API
-    supabase_ref = SUPABASE_URL.replace("https://","").replace(".supabase.co","")
-    headers_mgmt = {
-        "apikey": SUPABASE_KEY,
+    create_sql = """
+CREATE TABLE IF NOT EXISTS public.saved_items (
+  id           TEXT         PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_email   TEXT         NOT NULL,
+  type         TEXT         NOT NULL,
+  title        TEXT         NOT NULL,
+  content      JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  app_id       TEXT         NOT NULL DEFAULT 'pastor-ai-connect',
+  tags         JSONB        NOT NULL DEFAULT '[]'::jsonb,
+  notes        TEXT         NOT NULL DEFAULT '',
+  metadata     JSONB        NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_saved_items_user ON public.saved_items(user_email);
+CREATE INDEX IF NOT EXISTS idx_saved_items_app  ON public.saved_items(app_id);
+CREATE INDEX IF NOT EXISTS idx_saved_items_type ON public.saved_items(type);
+"""
+
+    mgmt_headers = {
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
     }
 
     results = {}
 
-    # Method 1: pg meta
-    async with httpx.AsyncClient(timeout=20) as client:
-        r1 = await client.post(
-            f"https://{supabase_ref}.supabase.co/pg/query",
-            headers=headers_mgmt,
+    # Supabase Management API v1 — SQL execution
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            f"https://api.supabase.com/v1/projects/{project_ref}/database/query",
+            headers=mgmt_headers,
             json={"query": create_sql}
         )
-        results["pg_query"] = r1.status_code
+        results["mgmt_api"] = {"status": r.status_code, "body": r.text[:300]}
 
-    # Method 2: rpc exec_sql if exists
-    async with httpx.AsyncClient(timeout=20) as client:
-        r2 = await client.post(
-            f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
-            headers={**headers_mgmt, "Prefer": "return=representation"},
-            json={"sql": create_sql}
-        )
-        results["rpc_exec_sql"] = r2.status_code
-
-    # Method 3: verify table exists now
+    # Verify table exists
     async with httpx.AsyncClient(timeout=10) as client:
-        r3 = await client.get(
+        r2 = await client.get(
             f"{SUPABASE_URL}/rest/v1/saved_items?limit=1",
-            headers=headers_mgmt
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
         )
-        results["table_probe"] = r3.status_code
-        table_exists = r3.status_code == 200
+        results["table_probe"] = r2.status_code
+        table_exists = r2.status_code == 200
 
     return {
         "success": table_exists,
+        "project_ref": project_ref,
         "table_exists": table_exists,
-        "methods_tried": results,
-        "message": "saved_items table is ready" if table_exists else "Table creation attempted — check Supabase dashboard"
+        "results": results,
+        "message": "saved_items table is ready ✅" if table_exists else "See results for details"
     }
