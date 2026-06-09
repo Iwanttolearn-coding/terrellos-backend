@@ -111,6 +111,19 @@ class HistorySearchRequest(BaseModel):
 
 # ── Sermon endpoint ───────────────────────────────────────────────────────────
 
+
+@router.get("/health")
+async def pastor_health():
+    """Pastor AI health check — used by monitoring."""
+    return {
+        "success": True,
+        "status": "online",
+        "service": "Pastor AI Connect",
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
+        "features": ["sermon","bible_study","devotional","counseling","recordings","transcripts","apologetics"],
+    }
+
 @router.post("/sermon")
 async def sermon(req: SermonRequest, request: Request):
     ref        = req.scripture or req.topic or "John 3:16"
