@@ -122,17 +122,24 @@ app = FastAPI(
 # ── CORS ───────────────────────────────────────────────────────────────────────
 _CORS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
-    "https://app.tm-dezigns.com",
+    # ── Production domains ──────────────────────────────────────────────────
     "https://pastoraiconnect.com",
+    "https://app.tm-dezigns.com",
+    "https://app.tm-dezigns.online",
     "https://heavenlyeternalecho.com",
     "https://allaroundcustoms.com",
-    "https://kindredlovebirds.com",
     "https://residentsyncai.com",
-    "http://localhost:5173",
-    "http://localhost:3000",
+    # ── Netlify preview / deploy URLs ───────────────────────────────────────
+    "https://pastoraiconnect.netlify.app",
+    "https://terrellos-frontend-tm.netlify.app",
+    # ── Render deploy URLs ──────────────────────────────────────────────────
     "https://hee-frontend.onrender.com",
     "https://terrellos-frontend.onrender.com",
     "https://pro-se-ai.onrender.com",
+    # ── Local dev ───────────────────────────────────────────────────────────
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5174",
 ]
 
 app.add_middleware(
