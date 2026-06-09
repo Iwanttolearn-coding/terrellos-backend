@@ -16,6 +16,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_SERVICE_
 
 # Whitelisted entity → Supabase table name map
 ENTITY_TABLE = {
+    "SavedItem":          "saved_items",
     "BuildLog":           "build_logs",
     "Project":            "projects",
     "Upload":             "uploads",
