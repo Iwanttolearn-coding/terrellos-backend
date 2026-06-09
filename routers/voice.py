@@ -119,3 +119,13 @@ async def list_voices():
     except Exception as e:
         return {"success": False, "error": str(e)}
     return {"success": False, "error": "Failed to fetch voices."}
+
+@router.get("/v1/voice/health")
+async def voice_health():
+    import os
+    return {
+        "success": True, "status": "online", "service": "HEE Voice Studio",
+        "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
+        "whisper": True,
+        "features": ["speak","transcribe","voices"]
+    }
