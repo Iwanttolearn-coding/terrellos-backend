@@ -36,6 +36,20 @@ class ConsentRequest(BaseModel):
 class MemoryDeleteRequest(BaseModel):
     user_id: str
 
+
+@router.get("/health")
+async def memory_health():
+    """Memory system health check."""
+    import os
+    return {
+        "success": True,
+        "status": "online",
+        "service": "HEE Memory System",
+        "supabase": bool(os.getenv("SUPABASE_URL")),
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "features": ["voice_interview","memory_sessions","story_fragments","consent","export"],
+    }
+
 @router.post("/session/start")
 async def session_start(payload: SessionStartRequest):
     if not payload.consent_confirmed:
