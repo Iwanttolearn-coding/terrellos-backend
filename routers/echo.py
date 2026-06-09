@@ -206,3 +206,9 @@ async def delete_companion(companion_id: str, user_email: str):
             c for c in _companion_store[user_email] if c["id"] != companion_id
         ]
     return {"success": True}
+
+# ── Health ─────────────────────────────────────────────────────────────────
+@router.get("/health")
+async def hee_companion_health():
+    return {"success": True, "status": "online", "service": "HEE AI Companion", "features": ["companion_chat","legacy_message","grief_support","companions"]}
+
