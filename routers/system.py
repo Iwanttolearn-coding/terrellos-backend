@@ -59,3 +59,22 @@ async def system_health():
         "elevenlabs":  "configured" if os.getenv("ELEVENLABS_API_KEY") else "missing",
         "uptime_sec":  int(time.time() - START_TIME),
     }
+
+
+@router.get("/status")
+async def system_status():
+    """System status alias — same as /health."""
+    import os
+    from datetime import datetime, timezone
+    return {
+        "success": True,
+        "status": "operational",
+        "version": "9.2.0-bail-flow",
+        "backend": "terrellos-backend.fly.dev",
+        "apps": ["terrellos","pastor-ai-connect","heavenly-eternal-echo","all-around-customs","kindred-love-birds"],
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "elevenlabs": bool(os.getenv("ELEVENLABS_API_KEY")),
+        "paypal": bool(os.getenv("PAYPAL_CLIENT_ID")),
+        "supabase": bool(os.getenv("SUPABASE_URL")),
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
