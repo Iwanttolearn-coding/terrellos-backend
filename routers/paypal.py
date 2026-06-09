@@ -247,3 +247,11 @@ async def billing_plans():
 async def billing_status():
     """Alias for /v1/paypal/status."""
     return await status()
+
+@router.get("/health")
+async def paypal_health():
+    import os
+    env = os.getenv("PAYPAL_ENV","sandbox")
+    return {"success": True, "status": "online", "service": "PayPal",
+            "environment": env, "live": env=="live",
+            "configured": bool(os.getenv("PAYPAL_CLIENT_ID"))}
