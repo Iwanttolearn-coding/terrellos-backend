@@ -219,6 +219,15 @@ async def _ensure_pastor_tables():
     except Exception as e:
         print(f"[startup] ❌ pastor_recordings ensure error: {e}")
 
+    try:
+        from pastor_db import ensure_saved_items_table
+        result2 = await ensure_saved_items_table()
+        if result2:
+            print("[startup] ✅ saved_items table ready")
+        else:
+            print("[startup] ⚠️  saved_items table check failed — may need manual creation")
+    except Exception as e:
+        print(f"[startup] saved_items table error: {e}")
 
 @app.get("/health")
 async def health(request: Request):
