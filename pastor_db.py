@@ -378,3 +378,46 @@ async def get_user_recordings(user_id: str, limit: int = 50) -> list:
     except Exception as e:
         logger.warning("get_user_recordings error: %s", e)
         return []
+
+
+async def ensure_saved_items_table() -> bool:
+    """Create saved_items table if it does not exist. Safe to call on every startup."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/saved_items?limit=1",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return True  # table already exists
+        # Table does not exist — create via Supabase SQL RPC
+        create_sql = """
+CREATE TABLE IF NOT EXISTS public.saved_items (
+  id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_email   TEXT        NOT NULL,
+  type         TEXT        NOT NULL,
+  title        TEXT        NOT NULL,
+  content      JSONB       NOT NULL DEFAULT '{}',
+  app_id       TEXT        NOT NULL DEFAULT 'pastor-ai-connect',
+  tags         JSONB       NOT NULL DEFAULT '[]',
+  notes        TEXT        NOT NULL DEFAULT '',
+  metadata     JSONB       NOT NULL DEFAULT '{}',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_saved_items_user_email ON public.saved_items (user_email);
+CREATE INDEX IF NOT EXISTS idx_saved_items_app_id     ON public.saved_items (app_id);
+CREATE INDEX IF NOT EXISTS idx_saved_items_type       ON public.saved_items (type);
+"""
+        async with httpx.AsyncClient(timeout=20) as c:
+            r2 = await c.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
+                headers=_headers(),
+                json={"sql": create_sql},
+            )
+        return r2.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning(f"ensure_saved_items_table: {e}")
+        return False
