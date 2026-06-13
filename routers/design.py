@@ -172,3 +172,19 @@ async def vectorize_prompt(request: Request):
     )
     log_usage(endpoint="/v1/design/vectorize-prompt", user_id=user, model="gpt-4o-mini", provider="openai")
     return {"success": True, "vector_prompt": resp.choices[0].message.content}
+
+
+@router.get("/health")
+async def design_health():
+    """Health check for design/image generation service."""
+    hf_key   = bool(os.getenv("HUGGINGFACE_API_KEY"))
+    oai_key  = bool(os.getenv("OPENAI_API_KEY"))
+    return {
+        "success": True,
+        "service": "TerrellOS Design Studio",
+        "image_engine": "flux.1-schnell (primary)" if hf_key else "openai gpt-image-1 (fallback)",
+        "huggingface": hf_key,
+        "openai": oai_key,
+        "status": "ready" if (hf_key or oai_key) else "needs_key",
+        "endpoints": ["/v1/design/generate-image", "/v1/design/vectorize-prompt", "/v1/design/print-quote", "/v1/design/memorial-image"]
+    }
