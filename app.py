@@ -41,6 +41,7 @@ from routers.companion     import router as companion_router
 from routers.subscriptions import router as subscriptions_router
 from routers.transcribe    import router as transcribe_router
 from routers.legacy        import router as legacy_router
+from routers.legion        import router as legion_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -86,6 +87,16 @@ APP_REGISTRY = {
         "theme": "green",
         "modules": ["core","uploads","admin"],
     },
+    "american-legion-post579": {
+        "name": "American Legion Bicentennial Post 579",
+        "domain": "post579sa.org",
+        "description": "Veterans Service Organization — Mrs. Carden Post, San Antonio TX",
+        "theme": "patriot",
+        "modules": ["core","uploads","admin"],
+        "commander": "Commander Harold",
+        "address": "3002 Gunsmoke Drive, San Antonio TX 78227",
+        "phone": "(210) 674-8069",
+    },
 }
 
 # ── Founder override — server-side, cannot be bypassed ─────────────────────
@@ -129,6 +140,9 @@ _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
     "https://heavenlyeternalecho.com",
     "https://allaroundcustoms.com",
     "https://residentsyncai.com",
+    "https://post579sa.org",
+    "https://www.post579sa.org",
+    "https://american-legion-post579.netlify.app",
     # ── Netlify preview / deploy URLs ───────────────────────────────────────
     "https://pastoraiconnect.netlify.app",
     "https://terrellos-frontend-tm.netlify.app",
@@ -194,6 +208,7 @@ app.include_router(bail_router)
 app.include_router(subscriptions_router)
 app.include_router(transcribe_router)
 app.include_router(legacy_router)
+app.include_router(legion_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
