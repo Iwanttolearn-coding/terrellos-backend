@@ -149,6 +149,9 @@ _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
     # ── Render deploy URLs ──────────────────────────────────────────────────
     "https://hee-frontend.onrender.com",
     "https://terrellos-frontend.onrender.com",
+    "https://blue-team.fly.dev",
+    "https://blue-team.netlify.app",
+    "http://localhost:5175",
     "https://pro-se-ai.onrender.com",
     # ── Local dev ───────────────────────────────────────────────────────────
     "http://localhost:5173",
