@@ -1113,7 +1113,7 @@ ALLOWED_QUESTION_TYPES = {"multiple_choice", "true_false", "fill_in_blank", "scr
 
 @router.post("/bible-game/generate")
 async def bible_game_generate(req: BibleGameGenerateRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_access(request, req.user_email or "")
     """Generate a unique, replayable set of Bible game questions on demand (no more static
     hardcoded 3-4 question banks). Mixes multiple choice, true/false, fill-in-the-blank, and
     scripture-reference questions, and saves the set to the vault so it can be replayed later."""
