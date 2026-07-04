@@ -1074,3 +1074,129 @@ Summary:"""
     )
     summary = resp.choices[0].message.content.strip()
     return {"success": True, "summary": summary}
+
+# ── Dynamic Bible Game Question Generator ───────────────────────────────────
+class BibleGameGenerateRequest(BaseModel):
+    topic: Optional[str] = ""
+    scripture: Optional[str] = ""
+    count: int = 10
+    question_types: Optional[List[str]] = None  # multiple_choice | true_false | fill_in_blank | scripture_reference
+    language: str = "en"
+    user_email: Optional[str] = ""
+    save: bool = True
+
+ALLOWED_GAME_COUNTS = {5, 10, 15, 25, 50}
+ALLOWED_QUESTION_TYPES = {"multiple_choice", "true_false", "fill_in_blank", "scripture_reference"}
+
+@router.post("/bible-game/generate")
+async def bible_game_generate(req: BibleGameGenerateRequest, request: Request):
+    """Generate a unique, replayable set of Bible game questions on demand (no more static
+    hardcoded 3-4 question banks). Mixes multiple choice, true/false, fill-in-the-blank, and
+    scripture-reference questions, and saves the set to the vault so it can be replayed later."""
+    count = req.count if req.count in ALLOWED_GAME_COUNTS else 10
+    types = [t for t in (req.question_types or []) if t in ALLOWED_QUESTION_TYPES]
+    if not types:
+        types = ["multiple_choice", "true_false", "fill_in_blank", "scripture_reference"]
+
+    subject = req.scripture.strip() or req.topic.strip() or "the life and teachings of Jesus"
+    lang_note = "Write everything in Spanish." if (req.language or "en").lower().startswith("es") else "Write everything in English."
+
+    prompt = f"""Generate exactly {count} unique Bible trivia/study questions about: {subject}
+
+Distribute the questions across these types (mix them, don't group all of one type together): {', '.join(types)}
+- multiple_choice: a question with exactly 4 options, one correct
+- true_false: a true/false statement about Scripture or biblical fact
+- fill_in_blank: a Bible verse or well-known phrase with one key word replaced by "_____"
+- scripture_reference: give a description/quote and ask which book/chapter/verse it's from, with 4 reference options
+
+{lang_note}
+
+Return ONLY a valid JSON array (no markdown, no commentary, no code fences), where each item has this exact shape:
+{{
+  "type": "multiple_choice" | "true_false" | "fill_in_blank" | "scripture_reference",
+  "question": "the question text",
+  "options": ["option1","option2","option3","option4"]  (omit or use ["True","False"] for true_false),
+  "correct_answer": "the correct option text exactly as it appears in options",
+  "explanation": "1-2 sentence explanation of the correct answer",
+  "scripture_reference": "Book Chapter:Verse if applicable, else empty string"
+}}
+
+Make every question different — no repeats, no near-duplicates. Vary difficulty naturally. Base everything on sound, accurate Scripture."""
+
+    batches = []
+    remaining = count
+    batch_size = 25
+    while remaining > 0:
+        this_batch = min(batch_size, remaining)
+        batch_prompt = prompt.replace(f"exactly {count} unique", f"exactly {this_batch} unique") if this_batch != count else prompt
+        raw = ai(batch_prompt, max_tokens=min(8000, this_batch * 220), temperature=0.85)
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            if cleaned.lower().startswith("json"):
+                cleaned = cleaned[4:]
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                parsed = parsed.get("questions", [])
+        except Exception:
+            start = cleaned.find("[")
+            end = cleaned.rfind("]")
+            parsed = []
+            if start != -1 and end != -1:
+                try:
+                    parsed = json.loads(cleaned[start:end+1])
+                except Exception:
+                    parsed = []
+        batches.extend(parsed)
+        remaining -= this_batch
+
+    questions = []
+    for i, q in enumerate(batches[:count]):
+        if not isinstance(q, dict) or not q.get("question"):
+            continue
+        questions.append({
+            "id": i + 1,
+            "type": q.get("type") if q.get("type") in ALLOWED_QUESTION_TYPES else "multiple_choice",
+            "question": q.get("question", ""),
+            "options": q.get("options") or (["True", "False"] if q.get("type") == "true_false" else []),
+            "correct_answer": q.get("correct_answer", ""),
+            "explanation": q.get("explanation", ""),
+            "scripture_reference": q.get("scripture_reference", ""),
+        })
+
+    if not questions:
+        raise HTTPException(status_code=502, detail="Question generation failed — please try again.")
+
+    quiz_id = None
+    if req.save:
+        try:
+            from routers.vault import vault_save, VaultSaveRequest
+            uid = _email_from_request(request, req.user_email or "")
+            saved = await vault_save(VaultSaveRequest(
+                user_email=uid or "anonymous",
+                type="bible_game_quiz",
+                title=f"Bible Quiz: {subject}",
+                content={"questions": questions, "subject": subject, "types": types},
+                app_id="pastor-ai-connect",
+                tags=["bible_game"] + types,
+                metadata={"count": len(questions), "language": req.language},
+            ))
+            quiz_id = saved.get("item_id") if isinstance(saved, dict) else None
+        except Exception as e:
+            print(f"bible_game save error: {e}")
+
+    return {"success": True, "quiz_id": quiz_id, "count": len(questions), "questions": questions}
+
+
+@router.get("/bible-game/{quiz_id}")
+async def bible_game_get(quiz_id: str, user_email: str = "anonymous"):
+    """Fetch a previously generated/saved Bible game quiz for replay."""
+    try:
+        from routers.vault import vault_get
+        result = await vault_get(quiz_id, user_email or "anonymous")
+        return {"success": True, "quiz": result.get("item")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Quiz not found: {e}")
