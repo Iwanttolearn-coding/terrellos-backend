@@ -156,6 +156,8 @@ After all word studies, add:
 @router.post("/analyze")
 async def analyze_word(req: WordStudyRequest, request: Request):
     """Full word study: Hebrew, Greek, or Aramaic analysis of a biblical word."""
+    from routers.pastor import _require_access
+    await _require_access(request, getattr(req, "email", "") or "")
     if not req.word or not req.word.strip():
         raise HTTPException(400, "Word is required")
     
@@ -165,7 +167,7 @@ async def analyze_word(req: WordStudyRequest, request: Request):
     try:
         content = ai(prompt, max_tokens=max_tokens)
     except Exception as e:
-        raise HTTPException(500, f"Word study generation failed: {str(e)}")
+        raise HTTPException(500, "Word study generation failed. Please try again in a moment.")
     
     # Try to save if user is authenticated
     saved_id = None
@@ -202,6 +204,8 @@ async def analyze_word(req: WordStudyRequest, request: Request):
 @router.post("/passage")
 async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     """Generate word studies for all key words in a Scripture passage."""
+    from routers.pastor import _require_access
+    await _require_access(request, getattr(req, "email", "") or "")
     if not req.passage or not req.passage.strip():
         raise HTTPException(400, "Scripture passage is required")
     
@@ -211,7 +215,7 @@ async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     try:
         content = ai(prompt, max_tokens=max_tokens)
     except Exception as e:
-        raise HTTPException(500, f"Passage word study failed: {str(e)}")
+        raise HTTPException(500, "Passage word study failed. Please try again in a moment.")
 
     saved_id = None
     try:

@@ -79,8 +79,10 @@ async def speak(payload: SpeakRequest, request: Request):
     }
 
 @router.post("/v1/voice/transcribe-upload")
-async def transcribe_upload(request: TranscribeRequest):
+async def transcribe_upload(request: TranscribeRequest, http_request: Request):
     """Transcribe audio via OpenAI Whisper (speech-to-text only — not TTS)."""
+    from routers.pastor import _require_access
+    await _require_access(http_request, "")
     import openai
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     if not OPENAI_API_KEY:
@@ -98,7 +100,7 @@ async def transcribe_upload(request: TranscribeRequest):
         )
         return {"success": True, "transcript": transcript.text, "provider": "openai_whisper"}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Transcription failed. Please try again in a moment."}
 
 @router.get("/v1/voice/status")
 async def voice_status():
@@ -120,7 +122,7 @@ async def list_voices():
             if r.status_code == 200:
                 return {"success": True, "voices": r.json().get("voices", [])}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Failed to fetch voices."}
     return {"success": False, "error": "Failed to fetch voices."}
 
 @router.get("/v1/voice/health")

@@ -59,7 +59,9 @@ async def _elevenlabs_speak(text: str) -> Optional[str]:
     return None
 
 @router.post("/read")
-async def read_bible(req: BibleReadRequest):
+async def read_bible(req: BibleReadRequest, request: Request):
+    from routers.pastor import _require_access
+    await _require_access(request, getattr(req, "email", "") or "")
     if not client:
         return {"success": False, "error": "OpenAI not configured"}
 
@@ -126,7 +128,7 @@ Write as if Pastor Mills is sitting with the listener, reading and explaining th
             "voice_provider": "elevenlabs" if audio_base64 else None,
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Bible reading generation failed. Please try again in a moment."}
 
 @router.get("/health")
 async def bible_health():

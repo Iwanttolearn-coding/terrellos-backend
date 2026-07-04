@@ -31,15 +31,24 @@ def _email_from_request(request: Request, body_email: str) -> str:
     return "anonymous"
 
 async def _require_access(request: Request, body_email: str = "") -> str:
-    """Gate premium content generation behind an active PayPal-backed subscription.
-    Raises 402 if the user has no active plan. Super admin/founder always passes."""
-    from routers.paypal import has_active_access
-    email = _email_from_request(request, body_email)
+    """Gate AI content generation behind: (1) a valid auth token, (2) an active
+    PayPal-backed subscription, (3) the monthly usage limit for that plan.
+    Raises 401 (no token), 402 (no active plan), or 429 (over usage limit).
+    Founder/super_admin always passes all three checks."""
+    from routers.auth import email_from_request as _auth_email
+    email = _auth_email(request)
+    if not email:
+        raise HTTPException(
+            status_code=401,
+            detail="Please log in to use this feature."
+        )
+    from routers.paypal import has_active_access, check_and_increment_usage
     if not await has_active_access(email):
         raise HTTPException(
             status_code=402,
             detail="An active Pastor AI subscription is required to use this feature. Please upgrade your plan to continue."
         )
+    await check_and_increment_usage(email)
     return email
 
 
@@ -412,6 +421,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
 
 @router.post("/devotional")
 async def devotional(req: SimpleRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     topic_text = req.topic or req.scripture or "God's grace"
     bible_ver  = req.bibleVersion or "NIV"
 
@@ -449,6 +459,7 @@ Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
 
 @router.post("/martyr-study")
 async def martyr_study(req: MartyrStudyRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     try:
         content = ai(f"""Provide a detailed historical and theological study of Christian martyr: {req.figure_name}
 
@@ -470,12 +481,13 @@ Include:
         return {"success": True, "figure": req.figure_name, "content": content, "word_count": len(content.split())}
     except Exception as e:
         log_usage(endpoint="/v1/pastor/martyr-study", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Martyr study failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Martyr study generation failed. Please try again in a moment.")
 
 # ── Church History ────────────────────────────────────────────────────────────
 
 @router.post("/church-history")
 async def church_history(req: BlackChristianHistoryRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     try:
         query = f"{req.topic} {req.era} {req.region}".strip() or "African American Christian history"
         content = ai(f"""Provide a detailed historical analysis of: {query}
@@ -504,12 +516,13 @@ Include:
         return {"success": True, "content": content, "word_count": len(content.split())}
     except Exception as e:
         log_usage(endpoint="/v1/pastor/church-history", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Church history generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Church history generation failed. Please try again in a moment.")
 
 # ── Theology ──────────────────────────────────────────────────────────────────
 
 @router.post("/theology")
 async def theology(req: SimpleRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     content = ai(f"""Provide a thorough theological analysis of: {req.topic or req.question}
 
 Include:
@@ -537,6 +550,7 @@ Include:
 
 @router.post("/counseling")
 async def pastoral_counseling(req: SimpleRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     content = ai(f"""Provide pastoral counseling guidance for: {req.topic or req.question}
 
 Include:
@@ -567,6 +581,7 @@ Always lead with compassion and Scripture. Never minimize real pain.""", max_tok
 
 @router.post("/discipleship")
 async def discipleship(request: Request):
+    await _require_access(request)
     body = await request.json()
 
     track       = body.get("track", "new_believer")
@@ -708,7 +723,7 @@ Include timeline if applicable. Be thorough and accurate.""", max_tokens=2000)
         return {"success": True, "content": content, "word_count": len(content.split())}
     except Exception as e:
         log_usage(endpoint="/v1/pastor/history/search", user_id="", status="error", model="gpt-4o", provider="openai", extra={"error": str(e)})
-        raise HTTPException(status_code=500, detail=f"History search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="History search failed. Please try again in a moment.")
 
 
 # ── Saved Content History ─────────────────────────────────────────────────────
@@ -775,6 +790,7 @@ class ApologeticsRequest(BaseModel):
 
 @router.post("/apologetics")
 async def apologetics(req: ApologeticsRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     subject = req.topic or req.question or "the Christian faith"
     depth_map = {
         "beginner":    "Use accessible language, avoid jargon, assume no theological background.",
@@ -820,7 +836,7 @@ Summarize the core of the apologetic case. Why this is defensible, hopeful, and 
         await save_generated_content(uid, f"Apologetics: {subject[:60]}", content, "apologetics", topic=subject)
         return {"success": True, "content": content, "topic": subject, "word_count": len(content.split())}
     except Exception as e:
-        raise HTTPException(500, f"Apologetics generation failed: {str(e)}")
+        raise HTTPException(500, "Apologetics generation failed. Please try again in a moment.")
 
 
 # ── Recordings ────────────────────────────────────────────────────────────────
@@ -873,6 +889,7 @@ class HumorRequest(BaseModel):
 
 @router.post("/humor")
 async def humor_endpoint(req: HumorRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     lang_instructions = {
         "es": "IMPORTANT: Respond entirely in Spanish.",
         "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
@@ -904,6 +921,7 @@ class PrayerRequest(BaseModel):
 
 @router.post("/prayer")
 async def prayer_endpoint(req: PrayerRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     lang_instructions = {
         "es": "IMPORTANT: Respond entirely in Spanish.",
         "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
@@ -980,7 +998,7 @@ async def save_transcript_endpoint(req: TranscriptRequest, request: Request):
         return {"success": True, "saved_id": saved_id, "title": req.title}
     except Exception as e:
         err_detail = _tb.format_exc()
-        return {"success": False, "error": str(e), "traceback": err_detail[-500:], "saved_id": None}
+        return {"success": False, "error": "Transcript summarization failed. Please try again in a moment.", "saved_id": None}
 
 
 # ── Course Enrollment ─────────────────────────────────────────────────────────
@@ -1067,6 +1085,7 @@ class SummarizeRequest(BaseModel):
 
 @router.post("/summarize-transcript")
 async def summarize_transcript_endpoint(req: SummarizeRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     """Auto-summarize a sermon or meeting transcript using GPT."""
     uid = _get_uid(request)
     text = (req.transcript or "").strip()

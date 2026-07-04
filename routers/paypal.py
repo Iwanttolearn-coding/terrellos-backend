@@ -154,6 +154,59 @@ async def get_subscription(user_email: str) -> dict:
     rows = r.json()
     return rows[0] if rows else {}
 
+PLAN_MONTHLY_LIMITS = {
+    "free": 5,
+    "starter": 50,
+    "church": 200,
+    "pro": 100000,
+    "lifetime": 100000,
+    "elite": 100000,
+}
+FOUNDER_EMAILS = {"millsterrell5@gmail.com", "millzterrell5@gmail.com", "millzterrell210@icloud.com"}
+
+async def check_and_increment_usage(user_email: str) -> None:
+    """Enforce a monthly AI-generation cap per plan tier. Raises 429 if exceeded.
+    Founder/super_admin bypass entirely. Fails open (does not block) if Supabase
+    itself is unreachable, so infra hiccups never lock out paying users."""
+    email_norm = (user_email or "").lower().strip()
+    if email_norm in FOUNDER_EMAILS:
+        return
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    sub = await get_subscription(user_email)
+    plan = (sub.get("plan_name") or "free").lower() if sub else "free"
+    limit = PLAN_MONTHLY_LIMITS.get(plan, PLAN_MONTHLY_LIMITS["free"])
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/ai_usage_counters",
+                headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                params={"user_email": f"eq.{email_norm}", "period": f"eq.{period}", "limit": "1"},
+            )
+            rows = r.json() if r.status_code == 200 else []
+            current = rows[0]["count"] if rows else 0
+            if current >= limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"You've reached your monthly limit of {limit} AI generations on the {plan} plan. Upgrade your plan or wait until next month for your limit to reset."
+                )
+            await c.post(
+                f"{SUPABASE_URL}/rest/v1/ai_usage_counters",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates",
+                },
+                json={"user_email": email_norm, "period": period, "count": current + 1},
+            )
+    except HTTPException:
+        raise
+    except Exception as _usage_err:
+        logging.warning(f"[usage-limit] check failed open for {email_norm}: {_usage_err}")
+        return
+
 async def has_active_access(user_email: str) -> bool:
     """Central gate — call before generating any premium content (sermons, bible studies,
     bible games, courses, voice, spanish, live transcription)."""
