@@ -1,5 +1,5 @@
 """
-/v1/auth/* — TerrellOS auth endpoints (JWT-based, stateless)
+/v1/auth/* — TerrellOS auth endpoints (JWT-based, persistent Supabase-backed users)
 """
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -7,16 +7,14 @@ from typing import Optional
 from datetime import datetime, timezone, timedelta
 import os, jwt, uuid
 
+from routers import user_store
+
 router = APIRouter(prefix="/v1/auth", tags=["Auth"])
 
-FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com", "millsterrell5@gmail.com"}
 JWT_SECRET     = os.getenv("JWT_SECRET", "terrellos-default-secret-change-in-prod")
 JWT_ALGORITHM  = "HS256"
 JWT_EXPIRES_DAYS = 30
-
-# Simple in-memory user store for non-founder registered users
-# (Production: replace with Supabase auth.users table)
-_REGISTERED_USERS: dict = {}
 
 
 def create_token(payload: dict) -> str:
@@ -58,40 +56,43 @@ class RegisterRequest(BaseModel):
     app_id: Optional[str] = ""
 
 
+def _token_data_from_row(row: dict) -> dict:
+    return {
+        "email": row.get("email"),
+        "user_id": row.get("id"),
+        "full_name": row.get("full_name"),
+        "role": row.get("role", "user"),
+        "plan": row.get("plan", "free"),
+        "all_tools_access": row.get("role") == "super_admin",
+        "is_founder": (row.get("email") or "").lower().strip() in FOUNDER_EMAILS,
+    }
+
+
 @router.post("/register")
 async def register(payload: RegisterRequest):
-    """Register a new user. Founders get super_admin, others get standard trial plan."""
+    """Register a new user. Founders get super_admin, others get standard free plan.
+    Passwords are hashed (PBKDF2-HMAC-SHA256) and stored persistently in Supabase —
+    never in memory, never in plaintext."""
     email = payload.email.lower().strip()
     if not email or "@" not in email:
         raise HTTPException(400, "Valid email address required")
-    if len(payload.password) < 6:
+    if not payload.password or len(payload.password) < 6:
         raise HTTPException(400, "Password must be at least 6 characters")
+
+    if not user_store.configured():
+        raise HTTPException(503, "Account storage is not configured — please try again shortly")
 
     is_founder = email in FOUNDER_EMAILS
 
-    # Check if already registered (in-memory store)
-    if email in _REGISTERED_USERS and not is_founder:
-        # Allow re-registration without error — just return token
-        pass
+    existing = await user_store.get_user_by_email(email)
+    if existing:
+        raise HTTPException(409, "An account with this email already exists. Please log in instead.")
 
-    user_id = str(uuid.uuid4())
-    token_data = {
-        "email": email,
-        "user_id": user_id,
-        "full_name": payload.full_name or email.split("@")[0],
-        "role": "super_admin" if is_founder else "user",
-        "plan": "elite" if is_founder else "free",
-        "all_tools_access": is_founder,
-        "is_founder": is_founder,
-    }
+    row = await user_store.create_user(email, payload.password, payload.full_name or "")
+    if is_founder:
+        row = await user_store.update_user(email, {"role": "super_admin", "plan": "elite"}) or row
 
-    # Persist in memory store
-    _REGISTERED_USERS[email] = {
-        **token_data,
-        "password_hint": payload.password[:2] + "***",  # Never store plaintext
-        "registered_at": datetime.now(timezone.utc).isoformat(),
-    }
-
+    token_data = _token_data_from_row(row)
     token = create_token(token_data)
     return {
         "success": True,
@@ -107,6 +108,8 @@ async def login(payload: LoginRequest):
     is_founder = email in FOUNDER_EMAILS
 
     if is_founder:
+        # Founder override remains a server-side hardcoded bypass (per standing instructions) —
+        # never gated on the password-store lookup.
         token_data = {
             "email": email,
             "role": "super_admin",
@@ -122,18 +125,24 @@ async def login(payload: LoginRequest):
             "message": "Founder access granted",
         }
 
-    # Check registered users
-    if email in _REGISTERED_USERS:
-        user = _REGISTERED_USERS[email]
-        token = create_token({k: v for k, v in user.items() if k not in ("password_hint", "registered_at")})
-        return {
-            "success": True,
-            "token": token, "access_token": token,
-            "user": user,
-            "message": "Welcome back",
-        }
+    if not user_store.configured():
+        raise HTTPException(503, "Account storage is not configured — please try again shortly")
 
-    raise HTTPException(status_code=401, detail="Email not found. Please register first.")
+    row = await user_store.get_user_by_email(email)
+    if not row:
+        raise HTTPException(status_code=401, detail="Email not found. Please register first.")
+
+    if not payload.password or not user_store.verify_password(payload.password, row.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+
+    token_data = _token_data_from_row(row)
+    token = create_token(token_data)
+    return {
+        "success": True,
+        "token": token, "access_token": token,
+        "user": token_data,
+        "message": "Welcome back",
+    }
 
 
 @router.get("/me")
@@ -152,7 +161,7 @@ async def me(request: Request):
             from routers.paypal import get_subscription, has_active_access
             sub = await get_subscription(email)
             active = await has_active_access(email)
-            is_founder = email.lower().strip() in ("millsterrell5@gmail.com", "millzterrell5@gmail.com")
+            is_founder = email.lower().strip() in FOUNDER_EMAILS
             data["plan"] = "founder" if is_founder else (sub.get("plan_name", "free") if active else "free")
             data["is_founder"] = is_founder
             data["has_active_subscription"] = bool(active)
@@ -169,7 +178,6 @@ async def logout():
     return {"success": True, "message": "Logged out"}
 
 
-
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     phone:        Optional[str] = None
@@ -180,10 +188,7 @@ class ProfileUpdateRequest(BaseModel):
 
 # Immutable fields — never allow user to self-update these
 _PROTECTED_FIELDS = {"role", "plan", "is_founder", "all_tools_access", "credits",
-                     "email", "user_id", "exp", "iat"}
-
-# In-memory profile store (augments JWT claims)
-_PROFILE_STORE: dict = {}
+                     "email", "user_id", "id", "password_hash", "exp", "iat"}
 
 
 @router.patch("/me")
@@ -191,41 +196,42 @@ async def update_me(payload: ProfileUpdateRequest, request: Request):
     """
     Allow the authenticated user to update safe profile fields only.
     Protected fields (role, plan, is_founder, email, credits) are
-    silently ignored — never exposed as an error.
+    silently ignored — never exposed as an error. Persisted in Supabase,
+    survives deploys/restarts.
     """
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     claims = decode_token(token)
     email  = claims.get("email", "")
     if not email:
         raise HTTPException(status_code=401, detail="Could not identify user from token")
 
-    # Build update dict from only the safe, non-None fields supplied
+    if email.lower().strip() in FOUNDER_EMAILS:
+        # Founders aren't in app_users; just echo back the update (nothing to persist against).
+        return {"success": True, "message": "Profile updated", "profile": claims,
+                "updated_fields": list(payload.model_dump(exclude_none=True).keys())}
+
     safe_updates: dict = {}
     for field, val in payload.model_dump(exclude_none=True).items():
         if field not in _PROTECTED_FIELDS and val is not None:
             safe_updates[field] = val
 
-    # Merge into profile store
-    existing = _PROFILE_STORE.get(email, {})
-    existing.update(safe_updates)
-    existing["email"]      = email        # always preserve
-    existing["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _PROFILE_STORE[email]  = existing
+    if not safe_updates:
+        return {"success": True, "message": "Nothing to update", "profile": claims, "updated_fields": []}
 
-    # Also update _REGISTERED_USERS if this is a registered user
-    if email in _REGISTERED_USERS:
-        for k, v in safe_updates.items():
-            _REGISTERED_USERS[email][k] = v
+    try:
+        updated_row = await user_store.update_user(email, safe_updates)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Profile update failed: {e}")
 
+    profile = user_store.public_user(updated_row) if updated_row else {**claims, **safe_updates}
     return {
         "success": True,
         "message": "Profile updated",
-        "profile": {**claims, **{k: v for k, v in existing.items()
-                                 if k not in _PROTECTED_FIELDS}},
+        "profile": profile,
         "updated_fields": list(safe_updates.keys()),
     }
 
@@ -233,7 +239,7 @@ async def update_me(payload: ProfileUpdateRequest, request: Request):
 @router.get("/me/profile")
 async def get_profile(request: Request):
     """
-    Return full profile: JWT claims merged with stored profile fields.
+    Return full profile from Supabase (persistent), merged with JWT claims.
     """
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
@@ -241,13 +247,15 @@ async def get_profile(request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
     claims = decode_token(token)
     email  = claims.get("email", "")
-    stored = _PROFILE_STORE.get(email, {})
+
+    if email.lower().strip() in FOUNDER_EMAILS:
+        return {"success": True, "user": {**claims, "display_name": "Terrell Millz"}}
+
+    row = await user_store.get_user_by_email(email) if user_store.configured() else None
+    stored = user_store.public_user(row) if row else {}
     return {
         "success": True,
-        "user": {
-            **claims,
-            **{k: v for k, v in stored.items() if k not in _PROTECTED_FIELDS},
-        },
+        "user": {**claims, **stored},
     }
 
 
@@ -269,5 +277,5 @@ async def founder_bypass(payload: LoginRequest):
 
 @router.get("/health")
 async def auth_health():
-    import os
-    return {"success": True, "status": "online", "service": "Auth", "supabase": bool(os.getenv("SUPABASE_URL"))}
+    return {"success": True, "status": "online", "service": "Auth",
+             "supabase": user_store.configured(), "storage": "persistent"}

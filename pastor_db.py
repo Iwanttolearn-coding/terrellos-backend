@@ -25,6 +25,25 @@ def _headers():
     }
 
 
+async def _post_with_retry(url: str, data: dict, retries: int = 1):
+    """POST to Supabase REST with one automatic retry on transient failure.
+    Returns (status_code, response_text_or_json)."""
+    import asyncio as _asyncio
+    last_status, last_text = None, None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.post(url, headers={**_headers(), "Prefer": "return=representation"}, json=data)
+            if r.status_code in (200, 201):
+                return r.status_code, r.json()
+            last_status, last_text = r.status_code, r.text[:300]
+        except Exception as e:
+            last_status, last_text = None, str(e)
+        if attempt < retries:
+            await _asyncio.sleep(0.8)
+    return last_status, last_text
+
+
 async def save_sermon(
     user_id: str,
     title: str,
@@ -57,22 +76,16 @@ async def save_sermon(
             "tags": tags or [],
             "generated_at": _now(),
         }
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(
-                f"{SUPABASE_URL}/rest/v1/pastor_sermons",
-                headers={**_headers(), "Prefer": "return=representation"},
-                json=data,
-            )
-        if r.status_code in (200, 201):
-            rows = r.json()
-            saved_id = rows[0]["id"] if rows else None
+        status, result = await _post_with_retry(f"{SUPABASE_URL}/rest/v1/pastor_sermons", data)
+        if status in (200, 201):
+            saved_id = result[0]["id"] if result else None
             logger.info("✅ sermon saved: %s", saved_id)
             return saved_id
         else:
-            logger.warning("sermon save failed %s: %s", r.status_code, r.text[:200])
+            logger.error("sermon save failed after retry — status=%s detail=%s", status, result)
             return None
     except Exception as e:
-        logger.warning("sermon save error: %s", e)
+        logger.error("sermon save error: %s", e)
         return None
 
 
@@ -105,22 +118,16 @@ async def save_bible_study(
             "tags": tags or [],
             "generated_at": _now(),
         }
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(
-                f"{SUPABASE_URL}/rest/v1/pastor_bible_studies",
-                headers={**_headers(), "Prefer": "return=representation"},
-                json=data,
-            )
-        if r.status_code in (200, 201):
-            rows = r.json()
-            saved_id = rows[0]["id"] if rows else None
+        status, result = await _post_with_retry(f"{SUPABASE_URL}/rest/v1/pastor_bible_studies", data)
+        if status in (200, 201):
+            saved_id = result[0]["id"] if result else None
             logger.info("✅ bible study saved: %s", saved_id)
             return saved_id
         else:
-            logger.warning("bible study save failed %s: %s", r.status_code, r.text[:200])
+            logger.error("bible study save failed after retry — status=%s detail=%s", status, result)
             return None
     except Exception as e:
-        logger.warning("bible study save error: %s", e)
+        logger.error("bible study save error: %s", e)
         return None
 
 

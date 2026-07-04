@@ -331,6 +331,8 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
         "extras": extras,
         "word_count": len(content.split()),
         "saved_id": saved_id,
+        "saved": bool(saved_id),
+        "save_error": None if saved_id else "Sermon was generated but could not be saved to your account. Please copy it now and try saving again shortly.",
     }
 
 # ── Bible Study endpoint ──────────────────────────────────────────────────────
@@ -397,7 +399,14 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
         provider="openai",
         extra={"scripture": req.scripture or req.topic, "word_count": len(content.split()), "saved_id": saved_id},
     )
-    return {"success": True, "content": content, "word_count": len(content.split()), "saved_id": saved_id}
+    return {
+        "success": True,
+        "content": content,
+        "word_count": len(content.split()),
+        "saved_id": saved_id,
+        "saved": bool(saved_id),
+        "save_error": None if saved_id else "Bible study was generated but could not be saved to your account. Please copy it now and try saving again shortly.",
+    }
 
 # ── Devotional endpoint ───────────────────────────────────────────────────────
 
@@ -1184,24 +1193,33 @@ Make every question different — no repeats, no near-duplicates. Vary difficult
         raise HTTPException(status_code=502, detail="Question generation failed — please try again.")
 
     quiz_id = None
+    save_error = None
     if req.save:
         try:
             from routers.vault import vault_save, VaultSaveRequest
             uid = _email_from_request(request, req.user_email or "")
             saved = await vault_save(VaultSaveRequest(
-                user_email=uid or "anonymous",
-                type="bible_game_quiz",
+                user_id=uid or "anonymous",
+                item_type="bible_game_quiz",
                 title=f"Bible Quiz: {subject}",
                 content={"questions": questions, "subject": subject, "types": types},
-                app_id="pastor-ai-connect",
-                tags=["bible_game"] + types,
-                metadata={"count": len(questions), "language": req.language},
+                metadata={"count": len(questions), "language": req.language, "types": types},
             ))
             quiz_id = saved.get("item_id") if isinstance(saved, dict) else None
+            if not quiz_id:
+                save_error = "Quiz generated but save did not return an id."
         except Exception as e:
+            save_error = f"Quiz generated but saving failed: {e}"
             print(f"bible_game save error: {e}")
 
-    return {"success": True, "quiz_id": quiz_id, "count": len(questions), "questions": questions}
+    return {
+        "success": True,
+        "quiz_id": quiz_id,
+        "saved": bool(quiz_id) if req.save else None,
+        "save_error": save_error,
+        "count": len(questions),
+        "questions": questions,
+    }
 
 
 @router.get("/bible-game/{quiz_id}")

@@ -65,6 +65,48 @@ async def _hdrs():
     t = await _get_token()
     return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}
 
+async def verify_webhook_signature(request, raw_body: bytes) -> bool:
+    """Verify an inbound PayPal webhook using PayPal's verify-webhook-signature API.
+    Returns True only if PayPal itself confirms the signature is valid for WEBHOOK_ID."""
+    if not WEBHOOK_ID:
+        logger.error("[paypal webhook] PAYPAL_WEBHOOK_ID not configured — rejecting webhook")
+        return False
+    try:
+        import json as _json
+        event_body = _json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        return False
+
+    required = ("paypal-auth-algo", "paypal-cert-url", "paypal-transmission-id",
+                "paypal-transmission-sig", "paypal-transmission-time")
+    headers_lower = {k.lower(): v for k, v in request.headers.items()}
+    if not all(h in headers_lower for h in required):
+        logger.error("[paypal webhook] missing required PayPal signature headers")
+        return False
+
+    verify_payload = {
+        "auth_algo":         headers_lower["paypal-auth-algo"],
+        "cert_url":          headers_lower["paypal-cert-url"],
+        "transmission_id":   headers_lower["paypal-transmission-id"],
+        "transmission_sig":  headers_lower["paypal-transmission-sig"],
+        "transmission_time": headers_lower["paypal-transmission-time"],
+        "webhook_id":        WEBHOOK_ID,
+        "webhook_event":     event_body,
+    }
+    try:
+        hdrs = await _hdrs()
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(f"{PAYPAL_API}/v1/notifications/verify-webhook-signature",
+                              headers=hdrs, json=verify_payload)
+        if r.status_code != 200:
+            logger.error("[paypal webhook] verify call failed %s: %s", r.status_code, r.text[:300])
+            return False
+        result = r.json().get("verification_status", "")
+        return result == "SUCCESS"
+    except Exception as e:
+        logger.error("[paypal webhook] verify-webhook-signature error: %s", e)
+        return False
+
 # ── Supabase helpers ─────────────────────────────────────────────────────────
 async def upsert_subscription(user_email: str, **fields) -> bool:
     """Upsert a row in user_subscriptions keyed by user_email (unique index)."""
@@ -288,15 +330,26 @@ async def cancel_subscription(req: CancelSubReq):
 # ── POST /webhook ────────────────────────────────────────────────────────────
 @router.post("/webhook")
 async def paypal_webhook(request: Request):
-    """Live PayPal webhook — updates user_subscriptions / payment_history in Supabase."""
+    """Live PayPal webhook — updates user_subscriptions / payment_history in Supabase.
+    Every event is verified against PayPal's verify-webhook-signature API before being
+    trusted — unsigned or forged events are rejected with 400 and never processed."""
+    raw_body = await request.body()
     try:
-        body = await request.json()
+        import json as _json
+        body = _json.loads(raw_body.decode("utf-8"))
     except Exception:
         raise HTTPException(400, "Invalid JSON")
 
     event = body.get("event_type", "")
+
+    verified = await verify_webhook_signature(request, raw_body)
+    if not verified:
+        logger.warning("[paypal webhook] REJECTED unverified/forged event=%s from %s",
+                        event, request.client.host if request.client else "unknown")
+        raise HTTPException(status_code=400, detail="Webhook signature verification failed")
+
     resource = body.get("resource", {})
-    logger.info("[paypal webhook] event=%s", event)
+    logger.info("[paypal webhook] verified event=%s", event)
 
     try:
         if event == "BILLING.SUBSCRIPTION.ACTIVATED":

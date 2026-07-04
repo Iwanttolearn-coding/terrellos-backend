@@ -1,14 +1,39 @@
 """
 /v1/admin/* — Admin tools, stats, user management
+All sensitive routes require a valid JWT with role=super_admin (or a founder email).
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
-import os
+import os, jwt as _jwt
 from .usage_logger import get_logs, get_stats
+from . import user_store
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin"])
+
+FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com", "millsterrell5@gmail.com"}
+JWT_SECRET = os.getenv("JWT_SECRET", "terrellos-default-secret-change-in-prod")
+
+
+def require_super_admin(request: Request) -> dict:
+    """Guard dependency — only a valid JWT belonging to a super_admin/founder may pass."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        claims = _jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    email = (claims.get("email") or "").lower().strip()
+    role = claims.get("role", "")
+    is_founder = bool(claims.get("is_founder")) or email in FOUNDER_EMAILS
+    if not (is_founder or role == "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return claims
+
 
 class AdminRequest(BaseModel):
     email: str
@@ -35,54 +60,59 @@ async def admin_stats():
 
 
 @router.get("/users")
-async def admin_users(request: Request):
-    """Return registered user list. Pulls from auth module's in-memory store."""
-    try:
-        from routers.auth import _REGISTERED_USERS, FOUNDER_EMAILS
-        # Also include founders as synthetic entries
-        all_users = {}
-        for email in FOUNDER_EMAILS:
-            all_users[email] = {
-                "email": email,
-                "role": "super_admin",
-                "plan": "elite",
-                "is_founder": True,
-                "registered_at": "2026-01-01T00:00:00+00:00",
-            }
-        # Override with real registered data
-        for email, data in _REGISTERED_USERS.items():
-            all_users[email] = data
-        users = list(all_users.values())
-    except Exception as e:
-        users = []
-    return {
-        "success": True,
-        "users": users,
-        "count": len(users),
-    }
+async def admin_users(request: Request, _admin=Depends(require_super_admin)):
+    """Return registered user list from persistent storage. Admin-only.
+    Never returns password_hash or any password-derived data."""
+    users = []
+    for email in FOUNDER_EMAILS:
+        users.append({
+            "email": email,
+            "role": "super_admin",
+            "plan": "elite",
+            "is_founder": True,
+            "created_at": "2026-01-01T00:00:00+00:00",
+        })
+    if user_store.configured():
+        import httpx
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{user_store.SUPABASE_URL}/rest/v1/{user_store.TABLE}",
+                headers=user_store._headers(),
+                params={"order": "created_at.desc", "limit": "500"},
+            )
+        if r.status_code == 200:
+            for row in (r.json() or []):
+                users.append(user_store.public_user(row))
+    return {"success": True, "users": users, "count": len(users)}
 
 
 @router.patch("/users/{user_id}")
-async def admin_update_user(user_id: str, payload: UpdateUserRequest):
-    """Update a user's role or plan. user_id is email in this system."""
+async def admin_update_user(user_id: str, payload: UpdateUserRequest, _admin=Depends(require_super_admin)):
+    """Update a user's role or plan. user_id is email in this system. Admin-only."""
+    email = user_id.lower().strip()
+    if email in FOUNDER_EMAILS:
+        return {"success": True, "updated": email, "message": "Founder accounts are not editable"}
+    if not user_store.configured():
+        raise HTTPException(503, "User storage not configured")
+    updates = {}
+    if payload.role:
+        updates["role"] = payload.role
+    if payload.plan:
+        updates["plan"] = payload.plan
+    if not updates:
+        return {"success": True, "updated": email, "message": "Nothing to update"}
     try:
-        from routers.auth import _REGISTERED_USERS
-        email = user_id.lower().strip()
-        if email in _REGISTERED_USERS:
-            if payload.role:
-                _REGISTERED_USERS[email]["role"] = payload.role
-            if payload.plan:
-                _REGISTERED_USERS[email]["plan"] = payload.plan
-            return {"success": True, "updated": email, "data": _REGISTERED_USERS[email]}
-        else:
-            return {"success": True, "updated": email, "message": "User not in registry (founder or external)"}
+        row = await user_store.update_user(email, updates)
     except Exception as e:
         raise HTTPException(500, f"Update failed: {e}")
+    if not row:
+        raise HTTPException(404, "User not found")
+    return {"success": True, "updated": email, "data": user_store.public_user(row)}
 
 
 @router.get("/logs")
-async def admin_logs(request: Request, limit: int = 50, user_id: str = None):
-    """Return usage logs from in-memory logger (all generative AI actions)."""
+async def admin_logs(request: Request, limit: int = 50, user_id: str = None, _admin=Depends(require_super_admin)):
+    """Return usage logs from in-memory logger (all generative AI actions). Admin-only."""
     logs = get_logs(limit=limit, user_id=user_id)
     stats = get_stats()
     return {
@@ -94,8 +124,7 @@ async def admin_logs(request: Request, limit: int = 50, user_id: str = None):
 
 
 @router.post("/grant")
-async def admin_grant(payload: AdminRequest):
-    FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+async def admin_grant(payload: AdminRequest, _admin=Depends(require_super_admin)):
     is_founder = payload.email.lower().strip() in FOUNDER_EMAILS
     return {"success": True, "email": payload.email, "granted": True,
             "role": "super_admin" if is_founder else "admin",
@@ -104,8 +133,8 @@ async def admin_grant(payload: AdminRequest):
 # ── TerrellOS Production Routes ──────────────────────────────────────────────
 
 @router.get("/usage-logs")
-async def usage_logs_alias(limit: int = 500, user_id: str = None):
-    """Alias for /logs — used by CostManager.jsx production frontend."""
+async def usage_logs_alias(limit: int = 500, user_id: str = None, _admin=Depends(require_super_admin)):
+    """Alias for /logs — used by CostManager.jsx production frontend. Admin-only."""
     logs = get_logs(limit=limit, user_id=user_id)
     stats = get_stats()
     return {"success": True, "logs": logs, "stats": stats, "total": len(logs)}
@@ -120,8 +149,8 @@ class BuildCommandRequest(BaseModel):
 
 
 @router.post("/build/command")
-async def build_command(req: BuildCommandRequest, request: Request):
-    """AI Builder — generate code from a natural-language prompt."""
+async def build_command(req: BuildCommandRequest, request: Request, _admin=Depends(require_super_admin)):
+    """AI Builder — generate code from a natural-language prompt. Admin-only (real OpenAI cost)."""
     from openai import OpenAI
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -159,8 +188,8 @@ class WorkflowRunRequest(BaseModel):
 
 
 @router.post("/workflow/run")
-async def workflow_run(req: WorkflowRunRequest, request: Request):
-    """Execute a TerrellOS workflow definition against the live backend."""
+async def workflow_run(req: WorkflowRunRequest, request: Request, _admin=Depends(require_super_admin)):
+    """Execute a TerrellOS workflow definition against the live backend. Admin-only."""
     nodes = req.workflow.get("nodes", [])
     edges = req.workflow.get("edges", [])
     steps = []
@@ -181,8 +210,8 @@ class FinetuneRequest(BaseModel):
 
 
 @router.post("/finetune/start")
-async def finetune_start(req: FinetuneRequest):
-    """Initiate a fine-tuning job — submits to OpenAI Files + FineTuning API."""
+async def finetune_start(req: FinetuneRequest, _admin=Depends(require_super_admin)):
+    """Initiate a fine-tuning job — submits to OpenAI Files + FineTuning API. Admin-only (real OpenAI cost)."""
     from openai import OpenAI
     import httpx
     api_key = os.getenv("OPENAI_API_KEY")
@@ -194,16 +223,13 @@ async def finetune_start(req: FinetuneRequest):
 
     try:
         client = OpenAI(api_key=api_key)
-        # Download the dataset file
         async with httpx.AsyncClient(timeout=30) as hc:
             file_resp = await hc.get(req.dataset_url)
         file_bytes = file_resp.content
         file_name  = req.dataset_url.split("/")[-1] or "dataset.jsonl"
 
-        # Upload file to OpenAI
         oai_file = client.files.create(file=(file_name, file_bytes, "application/json"), purpose="fine-tune")
 
-        # Create fine-tuning job
         ft_job = client.fine_tuning.jobs.create(
             training_file=oai_file.id,
             model=model_key,

@@ -167,6 +167,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Rate limiting (simple in-memory sliding window, per-IP) ─────────────────
+import time as _time
+from collections import defaultdict as _defaultdict
+
+_RATE_BUCKETS: Dict[str, list] = _defaultdict(list)
+
+# (path_prefix, requests_allowed, window_seconds) — first match wins, checked in order
+_RATE_RULES = [
+    ("/v1/auth/login",     10,  60),
+    ("/v1/auth/register",  5,   60),
+    ("/v1/admin",          30,  60),
+    ("/v1/paypal/webhook", 60,  60),
+    ("/v1/pastor/sermon",       10, 60),
+    ("/v1/pastor/bible-study",  10, 60),
+    ("/v1/pastor/bible-game",   10, 60),
+    ("/v1/pastor/devotional",   10, 60),
+    ("/v1/pastor/courses",      15, 60),
+    ("/v1/voice",               15, 60),
+    ("/v1/pastor",              30, 60),  # catch-all for other pastor generation routes
+]
+
+def _rate_limit_check(path: str, client_ip: str):
+    for prefix, limit, window in _RATE_RULES:
+        if path.startswith(prefix):
+            key = f"{prefix}:{client_ip}"
+            now = _time.time()
+            bucket = _RATE_BUCKETS[key]
+            # drop timestamps outside the window
+            while bucket and bucket[0] <= now - window:
+                bucket.pop(0)
+            if len(bucket) >= limit:
+                return False, limit, window
+            bucket.append(now)
+            return True, limit, window
+    return True, None, None
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    # honor a real client IP behind Fly's proxy if present
+    fwd = request.headers.get("Fly-Client-IP") or request.headers.get("X-Forwarded-For")
+    if fwd:
+        client_ip = fwd.split(",")[0].strip()
+    ok, limit, window = _rate_limit_check(request.url.path, client_ip)
+    if not ok:
+        return JSONResponse(
+            status_code=429,
+            content={"success": False, "detail": f"Too many requests — limit is {limit} per {window}s. Please slow down."},
+        )
+    return await call_next(request)
+
+
 # ── App identity middleware ────────────────────────────────────────────────────
 @app.middleware("http")
 async def app_identity_middleware(request: Request, call_next):
