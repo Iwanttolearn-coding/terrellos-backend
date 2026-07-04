@@ -84,13 +84,18 @@ async def register(payload: RegisterRequest):
 
     is_founder = email in FOUNDER_EMAILS
 
-    existing = await user_store.get_user_by_email(email)
-    if existing:
-        raise HTTPException(409, "An account with this email already exists. Please log in instead.")
+    try:
+        existing = await user_store.get_user_by_email(email)
+        if existing:
+            raise HTTPException(409, "An account with this email already exists. Please log in instead.")
 
-    row = await user_store.create_user(email, payload.password, payload.full_name or "")
-    if is_founder:
-        row = await user_store.update_user(email, {"role": "super_admin", "plan": "elite"}) or row
+        row = await user_store.create_user(email, payload.password, payload.full_name or "")
+        if is_founder:
+            row = await user_store.update_user(email, {"role": "super_admin", "plan": "elite"}) or row
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Account storage is temporarily unavailable — please try again shortly. ({e})")
 
     token_data = _token_data_from_row(row)
     token = create_token(token_data)
@@ -128,7 +133,10 @@ async def login(payload: LoginRequest):
     if not user_store.configured():
         raise HTTPException(503, "Account storage is not configured — please try again shortly")
 
-    row = await user_store.get_user_by_email(email)
+    try:
+        row = await user_store.get_user_by_email(email)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Account storage is temporarily unavailable — please try again shortly. ({e})")
     if not row:
         raise HTTPException(status_code=401, detail="Email not found. Please register first.")
 
