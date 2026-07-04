@@ -143,6 +143,24 @@ async def me(request: Request):
     if not token:
         raise HTTPException(status_code=401, detail="No token provided")
     data = decode_token(token)
+
+    # Enrich with LIVE subscription state from user_subscriptions (Supabase) —
+    # never trust a stale "plan" claim baked into the JWT at login time.
+    email = data.get("email", "")
+    if email:
+        try:
+            from routers.paypal import get_subscription, has_active_access
+            sub = await get_subscription(email)
+            active = await has_active_access(email)
+            is_founder = email.lower().strip() in ("millsterrell5@gmail.com", "millzterrell5@gmail.com")
+            data["plan"] = "founder" if is_founder else (sub.get("plan_name", "free") if active else "free")
+            data["is_founder"] = is_founder
+            data["has_active_subscription"] = bool(active)
+            data["subscription_status"] = sub.get("status", "inactive") if sub else "inactive"
+            data["plan_expires_at"] = sub.get("current_period_end") if sub else None
+        except Exception:
+            pass
+
     return {"success": True, "user": data}
 
 
