@@ -1,45 +1,58 @@
 """
-routers/paypal.py — TerrellOS / TM Dezigns PayPal Integration (LIVE)
+routers/paypal.py — Pastor AI Connect PayPal Integration (LIVE)
 Mounted at /v1/paypal in app.py
 
-Endpoints:
-  GET  /plans                — list plans + pricing
-  GET  /status               — integration health
-  POST /create-order         — create PayPal order
-  POST /capture-order        — capture + upgrade user plan
-  POST /refund               — issue refund (7-day window)
-  POST /cancel-subscription  — cancel subscription
-  POST /webhook              — PayPal live event webhook
-  GET  /admin/transactions   — admin: all transactions
-  GET  /admin/refunds        — admin: all refunds
+PayPal handles the money. Supabase (user_subscriptions / payment_history) stores access.
+The frontend never decides premium access — only the backend, via has_active_access().
+
+Plans:
+  free      — no PayPal, default state
+  starter   — $19/mo  subscription (PayPal Billing Plan)
+  church    — $49/mo  subscription (PayPal Billing Plan)
+  pro       — $99/mo  subscription (PayPal Billing Plan)
+  lifetime  — one-time checkout (PayPal Orders API)
 """
-import os, logging, json as _json
+import os, logging, hashlib, hmac
 import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 
-logger = logging.getLogger("paypal_tm")
+logger = logging.getLogger("paypal")
 router = APIRouter(tags=["PayPal Payments"])
 
-PAYPAL_API         = "https://api-m.paypal.com"   # LIVE — always
-CLIENT_ID          = os.getenv("PAYPAL_CLIENT_ID",     "AfOAEYZy_5A6lLkI0yo6ejxHyps2esDOx0Hw8Q8FhsJQqaYMoV-cYanygCJ_5hBz10pade1JMAWMbqmG")
-CLIENT_SECRET      = os.getenv("PAYPAL_CLIENT_SECRET", "EPtRt43JdL51o-fPJgMh_WX-d9AOKAA-FOZIyCNauOIoXzs7eth13AW4FaLSoM6usqai4Yuyw0runT4x")
-REFUND_WINDOW_DAYS = 7
-PAYPAL_WEBHOOK_ID  = os.getenv("PAYPAL_WEBHOOK_ID", "8CE33197GL084972H")
+PAYPAL_API      = "https://api-m.paypal.com"   # LIVE
+CLIENT_ID       = os.getenv("PAYPAL_CLIENT_ID", "")
+CLIENT_SECRET   = os.getenv("PAYPAL_CLIENT_SECRET", "")
+WEBHOOK_ID      = os.getenv("PAYPAL_WEBHOOK_ID", "")
+FRONTEND_URL    = os.getenv("PASTOR_FRONTEND_URL", "https://pastoraiconnect.com")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY", "")
+
+# PayPal Product + Billing Plan IDs (created live in PayPal, 2026-07-04)
+PAYPAL_PRODUCT_ID = "PROD-4DX47138BG699520H"
 
 PLANS = {
-    "basic":       {"price": "19.00",  "name": "TM Dezigns Basic"},
-    "professional":{"price": "49.00",  "name": "TM Dezigns Professional"},
-    "elite":       {"price": "99.00",  "name": "TM Dezigns Elite"},
-    "pastor_basic":{"price": "9.99",   "name": "Pastor AI Basic"},
-    "pastor_pro":  {"price": "19.99",  "name": "Pastor AI Premium"},
+    "free":     {"type": "none",         "price": "0.00",  "name": "Free"},
+    "starter":  {"type": "subscription", "price": "19.00", "name": "Pastor AI Starter",  "paypal_plan_id": "P-879880335R305352MNJEU33Y"},
+    "church":   {"type": "subscription", "price": "49.00", "name": "Pastor AI Church",   "paypal_plan_id": "P-78Y31372EL859561ENJEU33Y"},
+    "pro":      {"type": "subscription", "price": "99.00", "name": "Pastor AI Pro",      "paypal_plan_id": "P-01J4176396054683LNJEU34A"},
+    "lifetime": {"type": "one_time",     "price": "499.00","name": "Pastor AI Lifetime"},
 }
 
 def _now(): return datetime.now(timezone.utc).isoformat()
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+def _sb_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+# ── PayPal auth ────────────────────────────────────────────────────────────
 async def _get_token() -> str:
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.post(f"{PAYPAL_API}/v1/oauth2/token",
@@ -52,26 +65,143 @@ async def _hdrs():
     t = await _get_token()
     return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}
 
-# ── GET /plans ─────────────────────────────────────────────────────────────────
+# ── Supabase helpers ─────────────────────────────────────────────────────────
+async def upsert_subscription(user_email: str, **fields) -> bool:
+    """Upsert a row in user_subscriptions keyed by user_email (unique index)."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    payload = {"user_email": user_email.lower().strip(), **fields}
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post(
+            f"{SUPABASE_URL}/rest/v1/user_subscriptions",
+            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+            params={"on_conflict": "user_email"},
+            json=payload,
+        )
+    if r.status_code not in (200, 201):
+        logger.warning("upsert_subscription failed %s: %s", r.status_code, r.text[:300])
+        return False
+    return True
+
+async def record_payment(user_email: str, **fields) -> bool:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    payload = {"user_email": user_email.lower().strip(), **fields}
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post(
+            f"{SUPABASE_URL}/rest/v1/payment_history",
+            headers=_sb_headers(),
+            json=payload,
+        )
+    if r.status_code not in (200, 201):
+        logger.warning("record_payment failed %s: %s", r.status_code, r.text[:300])
+        return False
+    return True
+
+async def get_subscription(user_email: str) -> dict:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return {}
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get(
+            f"{SUPABASE_URL}/rest/v1/user_subscriptions",
+            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+            params={"user_email": f"eq.{user_email.lower().strip()}", "limit": "1"},
+        )
+    if r.status_code != 200:
+        return {}
+    rows = r.json()
+    return rows[0] if rows else {}
+
+async def has_active_access(user_email: str) -> bool:
+    """Central gate — call before generating any premium content (sermons, bible studies,
+    bible games, courses, voice, spanish, live transcription)."""
+    if not user_email:
+        return False
+    # Super admin always has access
+    if user_email.lower().strip() in ("millsterrell5@gmail.com", "millzterrell5@gmail.com"):
+        return True
+    sub = await get_subscription(user_email)
+    if not sub:
+        return False
+    if sub.get("plan_name") == "lifetime" and sub.get("status") == "active":
+        return True
+    if sub.get("status") != "active":
+        return False
+    period_end = sub.get("current_period_end")
+    if period_end:
+        try:
+            end = datetime.fromisoformat(period_end.replace("Z", "+00:00"))
+            if end < datetime.now(timezone.utc):
+                return False
+        except Exception:
+            pass
+    return True
+
+# ── GET /plans ─────────────────────────────────────────────────────────────
 @router.get("/plans")
 async def list_plans():
-    return {"plans": PLANS, "environment": "live", "client_id": CLIENT_ID[:20] + "..."}
+    return {"success": True, "plans": PLANS, "environment": "live"}
 
-# ── GET /status ────────────────────────────────────────────────────────────────
+# ── GET /status ────────────────────────────────────────────────────────────
 @router.get("/status")
-async def status():
-    return {
+async def status(user_email: Optional[str] = None):
+    base = {
         "environment": "live",
         "client_id_set": bool(CLIENT_ID),
         "secret_set": bool(CLIENT_SECRET),
         "ready": bool(CLIENT_ID and CLIENT_SECRET),
-        "refund_window_days": REFUND_WINDOW_DAYS,
         "webhook_url": "https://terrellos-backend.fly.dev/v1/paypal/webhook",
     }
+    if user_email:
+        sub = await get_subscription(user_email)
+        active = await has_active_access(user_email)
+        base["subscription"] = sub or {"plan_name": "free", "status": "inactive"}
+        base["has_access"] = active
+    return base
 
-# ── POST /create-order ─────────────────────────────────────────────────────────
+# ── POST /create-subscription (Starter / Church / Pro) ────────────────────
+class CreateSubReq(BaseModel):
+    plan: str                       # starter | church | pro
+    user_email: str
+    return_url: Optional[str] = None
+    cancel_url: Optional[str] = None
+
+@router.post("/create-subscription")
+async def create_subscription(req: CreateSubReq):
+    plan_info = PLANS.get(req.plan)
+    if not plan_info or plan_info["type"] != "subscription":
+        raise HTTPException(400, f"Unknown subscription plan. Valid: starter, church, pro")
+    hdrs = await _hdrs()
+    body = {
+        "plan_id": plan_info["paypal_plan_id"],
+        "subscriber": {"email_address": req.user_email},
+        "application_context": {
+            "brand_name": "Pastor AI Connect",
+            "user_action": "SUBSCRIBE_NOW",
+            "return_url": req.return_url or f"{FRONTEND_URL}/billing/success?plan={req.plan}",
+            "cancel_url": req.cancel_url or f"{FRONTEND_URL}/billing/cancel",
+        },
+    }
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.post(f"{PAYPAL_API}/v1/billing/subscriptions", headers=hdrs, json=body)
+        r.raise_for_status()
+        d = r.json()
+    approve = next((l["href"] for l in d.get("links", []) if l.get("rel") == "approve"), None)
+    logger.info("Subscription created: %s plan=%s user=%s", d.get("id"), req.plan, req.user_email)
+    # Pre-create a pending row so we can find the user when the webhook fires
+    await upsert_subscription(
+        req.user_email,
+        paypal_subscription_id=d.get("id"),
+        paypal_plan_id=plan_info["paypal_plan_id"],
+        plan_name=req.plan,
+        status="pending",
+    )
+    return {"success": True, "subscription_id": d.get("id"), "approve_url": approve, "plan": req.plan}
+
+# ── POST /create-order + /capture-order (Lifetime one-time) ────────────────
 class CreateOrderReq(BaseModel):
-    plan: str
+    plan: str = "lifetime"
+    user_email: str
     currency: str = "USD"
     return_url: Optional[str] = None
     cancel_url: Optional[str] = None
@@ -79,109 +209,69 @@ class CreateOrderReq(BaseModel):
 @router.post("/create-order")
 async def create_order(req: CreateOrderReq):
     plan_info = PLANS.get(req.plan)
-    if not plan_info:
-        raise HTTPException(400, f"Unknown plan. Valid: {list(PLANS.keys())}")
+    if not plan_info or plan_info["type"] != "one_time":
+        raise HTTPException(400, "Only 'lifetime' uses one-time checkout")
     hdrs = await _hdrs()
     async with httpx.AsyncClient(timeout=20) as c:
         r = await c.post(f"{PAYPAL_API}/v2/checkout/orders", headers=hdrs, json={
             "intent": "CAPTURE",
             "purchase_units": [{"amount": {"currency_code": req.currency, "value": plan_info["price"]},
-                                "description": f"TerrellOS — {plan_info['name']}"}],
+                                "description": f"Pastor AI Connect — {plan_info['name']}"}],
             "application_context": {
-                "brand_name": "TerrellOS",
+                "brand_name": "Pastor AI Connect",
                 "shipping_preference": "NO_SHIPPING",
                 "user_action": "PAY_NOW",
-                "return_url": req.return_url or "https://app.tm-dezigns.com/billing?status=success",
-                "cancel_url": req.cancel_url or "https://app.tm-dezigns.com/billing?status=cancel",
+                "return_url": req.return_url or f"{FRONTEND_URL}/billing/success?plan=lifetime",
+                "cancel_url": req.cancel_url or f"{FRONTEND_URL}/billing/cancel",
             },
         })
         r.raise_for_status()
         d = r.json()
-    approve = next((l["href"] for l in d.get("links",[]) if l.get("rel")=="approve"), None)
-    logger.info("Order created: %s plan=%s", d["id"], req.plan)
-    return {"success": True, "order_id": d["id"], "status": d["status"],
-            "approve_url": approve, "plan": req.plan, "amount": plan_info["price"]}
+    approve = next((l["href"] for l in d.get("links", []) if l.get("rel") == "approve"), None)
+    logger.info("Order created: %s plan=lifetime user=%s", d["id"], req.user_email)
+    return {"success": True, "order_id": d["id"], "approve_url": approve, "plan": "lifetime"}
 
-# ── POST /capture-order ────────────────────────────────────────────────────────
 class CaptureReq(BaseModel):
     order_id: str
-    plan: str
-    user_id: Optional[str] = None
-    user_email: Optional[str] = None
+    user_email: str
 
 @router.post("/capture-order")
 async def capture_order(req: CaptureReq):
-    plan_info = PLANS.get(req.plan, {})
     hdrs = await _hdrs()
     async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post(f"{PAYPAL_API}/v2/checkout/orders/{req.order_id}/capture",
-                         headers=hdrs, json={})
+        r = await c.post(f"{PAYPAL_API}/v2/checkout/orders/{req.order_id}/capture", headers=hdrs, json={})
         r.raise_for_status()
         d = r.json()
-    captures = d.get("purchase_units",[{}])[0].get("payments",{}).get("captures",[{}])
-    capture  = captures[0] if captures else {}
-    cap_id   = capture.get("id","")
-    payer    = d.get("payer",{})
-    expires  = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-    logger.info("Captured: %s plan=%s user=%s", cap_id, req.plan, req.user_email)
-    return {
-        "success": True,
-        "capture_id": cap_id,
-        "plan": req.plan,
-        "plan_name": plan_info.get("name", req.plan),
-        "amount": capture.get("amount",{}).get("value",""),
-        "expires_at": expires,
-        "payer": {"email": payer.get("email_address",""), "name": payer.get("name",{})},
-        "status": capture.get("status",""),
-    }
+    captures = d.get("purchase_units", [{}])[0].get("payments", {}).get("captures", [{}])
+    capture = captures[0] if captures else {}
+    cap_id = capture.get("id", "")
+    amount = capture.get("amount", {}).get("value", "")
+    status_ = capture.get("status", "")
 
-# ── POST /refund ───────────────────────────────────────────────────────────────
-class RefundReq(BaseModel):
-    capture_id: str
-    amount: Optional[str] = None
-    reason: Optional[str] = "Customer requested refund"
-    paid_at: Optional[str] = None   # ISO timestamp of original payment
+    if status_ == "COMPLETED":
+        await upsert_subscription(
+            req.user_email,
+            plan_name="lifetime",
+            status="active",
+            current_period_start=_now(),
+            current_period_end=None,
+        )
+        await record_payment(
+            req.user_email,
+            paypal_order_id=req.order_id,
+            paypal_capture_id=cap_id,
+            amount_cents=int(float(amount) * 100) if amount else None,
+            currency="USD",
+            status=status_,
+            description="Pastor AI Connect — Lifetime access",
+        )
+    logger.info("Captured: %s user=%s status=%s", cap_id, req.user_email, status_)
+    return {"success": status_ == "COMPLETED", "capture_id": cap_id, "amount": amount, "status": status_}
 
-@router.post("/refund")
-async def issue_refund(req: RefundReq):
-    # Enforce refund window
-    if req.paid_at:
-        try:
-            paid = datetime.fromisoformat(req.paid_at.replace("Z","+00:00"))
-            days_since = (datetime.now(timezone.utc) - paid).days
-            if days_since > REFUND_WINDOW_DAYS:
-                raise HTTPException(400,
-                    f"Refund window expired — {days_since} days since payment "
-                    f"(limit: {REFUND_WINDOW_DAYS} days).")
-        except HTTPException:
-            raise
-        except:
-            pass
-
-    hdrs = await _hdrs()
-    body = {"note_to_payer": (req.reason or "Refund")[:255]}
-    if req.amount:
-        body["amount"] = {"value": req.amount, "currency_code": "USD"}
-
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post(f"{PAYPAL_API}/v2/payments/captures/{req.capture_id}/refund",
-                         headers=hdrs, json=body)
-        r.raise_for_status()
-        d = r.json()
-
-    logger.info("Refund issued: %s capture=%s amount=%s",
-                d.get("id"), req.capture_id, d.get("amount",{}).get("value",""))
-    return {
-        "success": True,
-        "refund_id": d.get("id"),
-        "status": d.get("status"),
-        "amount": d.get("amount",{}).get("value",""),
-        "capture_id": req.capture_id,
-    }
-
-# ── POST /cancel-subscription ─────────────────────────────────────────────────
+# ── POST /cancel-subscription ───────────────────────────────────────────────
 class CancelSubReq(BaseModel):
     subscription_id: str
+    user_email: str
     reason: Optional[str] = "Cancelled by user"
 
 @router.post("/cancel-subscription")
@@ -191,67 +281,112 @@ async def cancel_subscription(req: CancelSubReq):
         r = await c.post(f"{PAYPAL_API}/v1/billing/subscriptions/{req.subscription_id}/cancel",
                          headers=hdrs, json={"reason": req.reason})
     if r.status_code in (200, 204):
+        await upsert_subscription(req.user_email, status="cancelled", cancel_at_period_end=True)
         return {"success": True, "subscription_id": req.subscription_id, "status": "CANCELLED"}
     raise HTTPException(502, f"PayPal cancel failed: {r.text[:200]}")
 
-# ── POST /webhook ──────────────────────────────────────────────────────────────
+# ── POST /webhook ────────────────────────────────────────────────────────────
 @router.post("/webhook")
 async def paypal_webhook(request: Request):
-    """Receive PayPal live events — capture, renewal, cancellation, refund."""
+    """Live PayPal webhook — updates user_subscriptions / payment_history in Supabase."""
     try:
         body = await request.json()
-    except:
+    except Exception:
         raise HTTPException(400, "Invalid JSON")
 
-    event    = body.get("event_type","")
-    resource = body.get("resource",{})
-    logger.info("[TM Dezigns webhook] event=%s", event)
+    event = body.get("event_type", "")
+    resource = body.get("resource", {})
+    logger.info("[paypal webhook] event=%s", event)
 
-    if event == "PAYMENT.CAPTURE.COMPLETED":
-        logger.info("Payment captured: %s amount=%s",
-                    resource.get("id"), resource.get("amount",{}).get("value"))
+    try:
+        if event == "BILLING.SUBSCRIPTION.ACTIVATED":
+            sub_id = resource.get("id")
+            plan_id = resource.get("plan_id")
+            payer_email = (resource.get("subscriber", {}) or {}).get("email_address", "")
+            plan_name = next((k for k, v in PLANS.items() if v.get("paypal_plan_id") == plan_id), "unknown")
+            start = resource.get("start_time") or _now()
+            billing_info = resource.get("billing_info", {})
+            next_bill = billing_info.get("next_billing_time")
+            if payer_email:
+                await upsert_subscription(
+                    payer_email,
+                    paypal_subscription_id=sub_id,
+                    paypal_plan_id=plan_id,
+                    plan_name=plan_name,
+                    status="active",
+                    current_period_start=start,
+                    current_period_end=next_bill,
+                    cancel_at_period_end=False,
+                )
 
-    elif event in ("BILLING.SUBSCRIPTION.RENEWED","PAYMENT.SALE.COMPLETED"):
-        logger.info("Subscription renewed: sub=%s amount=%s",
-                    resource.get("billing_agreement_id",""), 
-                    resource.get("amount",{}).get("total",""))
+        elif event == "BILLING.SUBSCRIPTION.UPDATED":
+            sub_id = resource.get("id")
+            status_ = resource.get("status", "").lower()
+            billing_info = resource.get("billing_info", {})
+            next_bill = billing_info.get("next_billing_time")
+            payer_email = (resource.get("subscriber", {}) or {}).get("email_address", "")
+            if payer_email:
+                await upsert_subscription(
+                    payer_email,
+                    paypal_subscription_id=sub_id,
+                    status="active" if status_ == "active" else status_,
+                    current_period_end=next_bill,
+                )
 
-    elif event == "BILLING.SUBSCRIPTION.CANCELLED":
-        logger.info("Subscription cancelled: %s", resource.get("id",""))
+        elif event == "BILLING.SUBSCRIPTION.CANCELLED":
+            payer_email = (resource.get("subscriber", {}) or {}).get("email_address", "")
+            if payer_email:
+                await upsert_subscription(payer_email, status="cancelled", cancel_at_period_end=True)
 
-    elif event == "PAYMENT.CAPTURE.REFUNDED":
-        logger.info("Refund confirmed: capture=%s", resource.get("id",""))
+        elif event in ("PAYMENT.SALE.COMPLETED", "CHECKOUT.ORDER.APPROVED"):
+            payer_email = (resource.get("payer", {}) or {}).get("email_address", "") or \
+                          (resource.get("subscriber", {}) or {}).get("email_address", "")
+            amount = resource.get("amount", {})
+            value = amount.get("total") or amount.get("value") or "0"
+            if payer_email:
+                await record_payment(
+                    payer_email,
+                    paypal_order_id=resource.get("id") if event == "CHECKOUT.ORDER.APPROVED" else None,
+                    paypal_subscription_id=resource.get("billing_agreement_id", ""),
+                    amount_cents=int(float(value) * 100) if value else None,
+                    currency=amount.get("currency") or amount.get("currency_code") or "USD",
+                    status="completed",
+                    description=f"PayPal event: {event}",
+                )
+
+        elif event == "PAYMENT.CAPTURE.COMPLETED":
+            amount = resource.get("amount", {})
+            value = amount.get("value", "0")
+            payer_email = (resource.get("payer", {}) or {}).get("email_address", "")
+            if payer_email:
+                await record_payment(
+                    payer_email,
+                    paypal_capture_id=resource.get("id"),
+                    amount_cents=int(float(value) * 100) if value else None,
+                    currency=amount.get("currency_code", "USD"),
+                    status="completed",
+                    description="PayPal capture completed (one-time / lifetime)",
+                )
+    except Exception as e:
+        logger.error("webhook processing error: %s", e)
 
     return {"received": True, "event": event}
 
-# ── GET /admin/transactions (stub — wire to your DB) ──────────────────────────
-@router.get("/admin/transactions")
-async def admin_transactions():
-    return {"message": "Wire to your DB — query payment_transactions table", "status": "ok"}
+# ── GET /health ──────────────────────────────────────────────────────────────
+@router.get("/health")
+async def paypal_health():
+    return {"success": True, "status": "online", "service": "PayPal",
+            "environment": "live", "live": True,
+            "configured": bool(CLIENT_ID and CLIENT_SECRET)}
 
-@router.get("/admin/refunds")
-async def admin_refunds():
-    return {"message": "Wire to your DB — query refund_log table", "status": "ok"}
-
-
-# ── Billing alias routes (maps /v1/billing/* used by TerrellOS frontend) ──────
+# ── Billing alias routes (maps /v1/billing/* used by TerrellOS/Pastor AI frontend) ──
 from fastapi import APIRouter as _AR
 billing_router = _AR(prefix="/v1/billing", tags=["Billing"])
 
 @billing_router.get("/plans")
 async def billing_plans():
-    """Alias for /v1/paypal/plans — used by TerrellOS frontend."""
-    return await plans()
+    return await list_plans()
 
 @billing_router.get("/status")
-async def billing_status():
-    """Alias for /v1/paypal/status."""
-    return await status()
-
-@router.get("/health")
-async def paypal_health():
-    import os
-    env = os.getenv("PAYPAL_ENV","sandbox")
-    return {"success": True, "status": "online", "service": "PayPal",
-            "environment": env, "live": env=="live",
-            "configured": bool(os.getenv("PAYPAL_CLIENT_ID"))}
+async def billing_status(user_email: Optional[str] = None):
+    return await status(user_email)

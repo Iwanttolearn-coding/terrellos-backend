@@ -4,7 +4,7 @@ TTS: ElevenLabs ONLY (Brian voice). NO fallbacks. NO robot TTS. NO HuggingFace. 
 If ElevenLabs fails → return error. Never return a computer-generated voice.
 """
 import os, base64, httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -20,6 +20,7 @@ class SpeakRequest(BaseModel):
     voice_id: Optional[str] = None
     model:    Optional[str] = None
     engine:   Optional[str] = "elevenlabs"
+    email:    Optional[str] = None
 
 class TranscribeRequest(BaseModel):
     audio_base64: Optional[str] = None
@@ -46,7 +47,9 @@ async def _elevenlabs_speak(text: str, voice_id: str, model: str) -> bytes | Non
     return None
 
 @router.post("/v1/voice/speak")
-async def speak(payload: SpeakRequest):
+async def speak(payload: SpeakRequest, request: Request):
+    from routers.pastor import _require_access
+    await _require_access(request, payload.email or "")
     vid   = payload.voice_id or ELEVENLABS_VOICE_ID
     model = payload.model    or ELEVENLABS_MODEL
 

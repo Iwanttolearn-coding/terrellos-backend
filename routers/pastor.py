@@ -30,6 +30,18 @@ def _email_from_request(request: Request, body_email: str) -> str:
         pass
     return "anonymous"
 
+async def _require_access(request: Request, body_email: str = "") -> str:
+    """Gate premium content generation behind an active PayPal-backed subscription.
+    Raises 402 if the user has no active plan. Super admin/founder always passes."""
+    from routers.paypal import has_active_access
+    email = _email_from_request(request, body_email)
+    if not await has_active_access(email):
+        raise HTTPException(
+            status_code=402,
+            detail="An active Pastor AI subscription is required to use this feature. Please upgrade your plan to continue."
+        )
+    return email
+
 
 
 PASTOR_SYSTEM = """You are Pastor Mills — a warm, biblical, direct, Spirit-filled teaching pastor and counselor.
@@ -149,6 +161,7 @@ def duration_to_target(duration: str):
 
 @router.post("/sermon")
 async def sermon(req: SermonRequest, request: Request):
+    await _require_access(request, req.email or "")
     ref        = req.scripture or req.topic or "John 3:16"
     denom      = req.denomination or "Non-denominational evangelical"
     audience   = req.audience or "general congregation"
@@ -324,6 +337,7 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
 
 @router.post("/bible-study")
 async def bible_study(req: SimpleRequest, request: Request):
+    await _require_access(request, req.email or "")
     ref = req.scripture or req.topic or "John 3:16"
     bible_ver = req.bibleVersion or "NIV"
 
@@ -1000,7 +1014,7 @@ async def list_courses():
 
 @router.post("/courses/enroll")
 async def enroll_course(req: CourseEnrollRequest, request: Request):
-    uid = _email_from_request(request, req.email or "")
+    uid = await _require_access(request, req.email or "")
     course_id = req.course_id or ""
     course = PASTOR_COURSES.get(course_id)
     if not course and course_id:
@@ -1090,6 +1104,7 @@ ALLOWED_QUESTION_TYPES = {"multiple_choice", "true_false", "fill_in_blank", "scr
 
 @router.post("/bible-game/generate")
 async def bible_game_generate(req: BibleGameGenerateRequest, request: Request):
+    await _require_access(request, getattr(req, "email", "") or "")
     """Generate a unique, replayable set of Bible game questions on demand (no more static
     hardcoded 3-4 question banks). Mixes multiple choice, true/false, fill-in-the-blank, and
     scripture-reference questions, and saves the set to the vault so it can be replayed later."""
