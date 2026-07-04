@@ -81,8 +81,8 @@ async def speak(payload: SpeakRequest, request: Request):
 @router.post("/v1/voice/transcribe-upload")
 async def transcribe_upload(request: TranscribeRequest, http_request: Request):
     """Transcribe audio via OpenAI Whisper (speech-to-text only — not TTS)."""
-    from routers.pastor import _require_access
-    await _require_access(http_request, "")
+    from routers.pastor import _require_auth_and_usage
+    await _require_auth_and_usage(http_request, "")
     import openai
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     if not OPENAI_API_KEY:

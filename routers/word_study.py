@@ -156,8 +156,8 @@ After all word studies, add:
 @router.post("/analyze")
 async def analyze_word(req: WordStudyRequest, request: Request):
     """Full word study: Hebrew, Greek, or Aramaic analysis of a biblical word."""
-    from routers.pastor import _require_access
-    await _require_access(request, getattr(req, "email", "") or "")
+    from routers.pastor import _require_auth_and_usage
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     if not req.word or not req.word.strip():
         raise HTTPException(400, "Word is required")
     
@@ -204,8 +204,8 @@ async def analyze_word(req: WordStudyRequest, request: Request):
 @router.post("/passage")
 async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     """Generate word studies for all key words in a Scripture passage."""
-    from routers.pastor import _require_access
-    await _require_access(request, getattr(req, "email", "") or "")
+    from routers.pastor import _require_auth_and_usage
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     if not req.passage or not req.passage.strip():
         raise HTTPException(400, "Scripture passage is required")
     

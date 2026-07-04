@@ -51,6 +51,25 @@ async def _require_access(request: Request, body_email: str = "") -> str:
     await check_and_increment_usage(email)
     return email
 
+async def _require_auth_and_usage(request: Request, body_email: str = "") -> str:
+    """Gate GENERAL AI features (devotional, theology, counseling, prayer, etc.) behind:
+    (1) a valid auth token, (2) the monthly usage limit for the user's plan tier.
+    Free users ARE allowed — up to their free-tier monthly cap. Paid plans get a much
+    higher cap. Founder/super_admin is unlimited. Does NOT require an active paid plan
+    (unlike _require_access, which is reserved for premium-only features: sermon,
+    bible-study, bible-game, courses/enroll, voice speak).
+    Raises 401 (no token) or 429 (over monthly usage limit)."""
+    from routers.auth import email_from_request as _auth_email
+    email = _auth_email(request)
+    if not email:
+        raise HTTPException(
+            status_code=401,
+            detail="Please log in to use this feature."
+        )
+    from routers.paypal import check_and_increment_usage
+    await check_and_increment_usage(email)
+    return email
+
 
 
 PASTOR_SYSTEM = """You are Pastor Mills — a warm, biblical, direct, Spirit-filled teaching pastor and counselor.
@@ -421,7 +440,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting.""
 
 @router.post("/devotional")
 async def devotional(req: SimpleRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     topic_text = req.topic or req.scripture or "God's grace"
     bible_ver  = req.bibleVersion or "NIV"
 
@@ -459,7 +478,7 @@ Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
 
 @router.post("/martyr-study")
 async def martyr_study(req: MartyrStudyRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     try:
         content = ai(f"""Provide a detailed historical and theological study of Christian martyr: {req.figure_name}
 
@@ -487,7 +506,7 @@ Include:
 
 @router.post("/church-history")
 async def church_history(req: BlackChristianHistoryRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     try:
         query = f"{req.topic} {req.era} {req.region}".strip() or "African American Christian history"
         content = ai(f"""Provide a detailed historical analysis of: {query}
@@ -522,7 +541,7 @@ Include:
 
 @router.post("/theology")
 async def theology(req: SimpleRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     content = ai(f"""Provide a thorough theological analysis of: {req.topic or req.question}
 
 Include:
@@ -550,7 +569,7 @@ Include:
 
 @router.post("/counseling")
 async def pastoral_counseling(req: SimpleRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     content = ai(f"""Provide pastoral counseling guidance for: {req.topic or req.question}
 
 Include:
@@ -581,7 +600,7 @@ Always lead with compassion and Scripture. Never minimize real pain.""", max_tok
 
 @router.post("/discipleship")
 async def discipleship(request: Request):
-    await _require_access(request)
+    await _require_auth_and_usage(request)
     body = await request.json()
 
     track       = body.get("track", "new_believer")
@@ -790,7 +809,7 @@ class ApologeticsRequest(BaseModel):
 
 @router.post("/apologetics")
 async def apologetics(req: ApologeticsRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     subject = req.topic or req.question or "the Christian faith"
     depth_map = {
         "beginner":    "Use accessible language, avoid jargon, assume no theological background.",
@@ -889,7 +908,7 @@ class HumorRequest(BaseModel):
 
 @router.post("/humor")
 async def humor_endpoint(req: HumorRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     lang_instructions = {
         "es": "IMPORTANT: Respond entirely in Spanish.",
         "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
@@ -921,7 +940,7 @@ class PrayerRequest(BaseModel):
 
 @router.post("/prayer")
 async def prayer_endpoint(req: PrayerRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     lang_instructions = {
         "es": "IMPORTANT: Respond entirely in Spanish.",
         "bilingual": "IMPORTANT: Write in English first, then repeat in Spanish labeled Español:",
@@ -1085,7 +1104,7 @@ class SummarizeRequest(BaseModel):
 
 @router.post("/summarize-transcript")
 async def summarize_transcript_endpoint(req: SummarizeRequest, request: Request):
-    await _require_access(request, getattr(req, "email", "") or "")
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     """Auto-summarize a sermon or meeting transcript using GPT."""
     uid = _get_uid(request)
     text = (req.transcript or "").strip()

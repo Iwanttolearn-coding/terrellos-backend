@@ -60,8 +60,8 @@ async def _elevenlabs_speak(text: str) -> Optional[str]:
 
 @router.post("/read")
 async def read_bible(req: BibleReadRequest, request: Request):
-    from routers.pastor import _require_access
-    await _require_access(request, getattr(req, "email", "") or "")
+    from routers.pastor import _require_auth_and_usage
+    await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     if not client:
         return {"success": False, "error": "OpenAI not configured"}
 
