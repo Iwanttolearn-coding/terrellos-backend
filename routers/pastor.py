@@ -124,6 +124,29 @@ async def pastor_health():
         "features": ["sermon","bible_study","devotional","counseling","recordings","transcripts","apologetics"],
     }
 
+DURATION_WORD_TARGETS = {
+    "15 minutes": (2000, 2400),
+    "20 minutes": (2700, 3100),
+    "30 minutes": (4000, 4600),
+    "45 minutes": (6000, 6800),
+    "60 minutes": (7800, 8800),
+    "90 minutes": (11500, 13000),
+}
+
+def duration_to_target(duration: str):
+    key = (duration or "30 minutes").strip().lower()
+    for k, v in DURATION_WORD_TARGETS.items():
+        if k.lower() == key:
+            return v
+    # fallback: try to extract a number of minutes and estimate ~135 wpm
+    import re as _re
+    m = _re.search(r"(\d+)", key)
+    if m:
+        minutes = int(m.group(1))
+        target = int(minutes * 135)
+        return (target, int(target * 1.15))
+    return (4000, 4600)
+
 @router.post("/sermon")
 async def sermon(req: SermonRequest, request: Request):
     ref        = req.scripture or req.topic or "John 3:16"
@@ -144,6 +167,8 @@ async def sermon(req: SermonRequest, request: Request):
         "nondenominational": "Broadly evangelical. Accessible, warm, practical, culturally aware.",
     }.get(style.lower().replace(" ","").replace("-",""), "")
 
+    min_words, max_words = duration_to_target(duration)
+
     prompt = f"""Generate a COMPLETE, FULL-LENGTH, PRODUCTION-QUALITY sermon on: {ref}
 
 Sermon parameters:
@@ -155,6 +180,11 @@ Sermon parameters:
 {f"- Style instructions: {style_instructions}" if style_instructions else ""}
 
 This is NOT a summary or outline. This is a FULLY WRITTEN, PREACHABLE sermon. Write every word as if this will be preached to a real congregation this Sunday. Every point must be fully developed — no placeholders, no "(add illustration here)".
+
+⚠️ LENGTH REQUIREMENT — THIS IS MANDATORY, NOT A SUGGESTION:
+This sermon MUST be between {min_words} and {max_words} words long, matching a real {duration} spoken sermon at a natural preaching pace (~135-150 words per minute).
+Do NOT stop early. Do NOT summarize or compress sections to save space. If you reach the end of the structure below and are under {min_words} words, GO BACK and expand every section with more illustration, more explanation, more Scripture cross-reference, and more pastoral application until you reach the required length.
+A short, thin sermon is a FAILED response for this request. Treat {min_words} words as a hard floor.
 
 REQUIRED STRUCTURE — do not skip any section:
 
@@ -208,7 +238,20 @@ Pastoral encouragement: [Warm, personal pastoral note]
 **CLOSING PRAYER**
 [Full pastoral prayer, 3-4 paragraphs, directly connected to the sermon theme. Address God directly. Include thanksgiving, confession, petition for the congregation, and declaration of faith.]"""
 
-    content = ai(prompt, max_tokens=8000)
+    dynamic_max_tokens = min(16000, int(max_words * 1.6))
+    content = ai(prompt, max_tokens=dynamic_max_tokens)
+
+    # Safety net: if the model still comes in short, ask it to continue/expand once
+    if len(content.split()) < int(min_words * 0.7):
+        continuation_prompt = f"""The sermon you just wrote is too short ({len(content.split())} words). It needs to be {min_words}-{max_words} words for a {duration} sermon.
+Here is what you wrote so far:
+
+{content}
+
+Rewrite and EXPAND this into a complete sermon of AT LEAST {min_words} words, keeping the same structure, title, and theme, but developing every section with significantly more depth, illustration, and application. Output the full expanded sermon only."""
+        expanded = ai(continuation_prompt, max_tokens=dynamic_max_tokens, temperature=0.7)
+        if len(expanded.split()) > len(content.split()):
+            content = expanded
 
     extras = {}
     if req.generateExtras:
