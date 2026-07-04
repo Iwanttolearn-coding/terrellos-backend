@@ -168,96 +168,78 @@ async def sermon(req: SermonRequest, request: Request):
     }.get(style.lower().replace(" ","").replace("-",""), "")
 
     min_words, max_words = duration_to_target(duration)
+    target_words = (min_words + max_words) // 2
 
-    prompt = f"""Generate a COMPLETE, FULL-LENGTH, PRODUCTION-QUALITY sermon on: {ref}
-
-Sermon parameters:
+    style_note = f"- Style instructions: {style_instructions}" if style_instructions else ""
+    base_context = f"""Sermon parameters:
 - Style: {style}
 - Denomination/tradition: {denom}
 - Target audience: {audience}
 - Approximate duration: {duration}
 - Bible version: {bible_ver}
-{f"- Style instructions: {style_instructions}" if style_instructions else ""}
+{style_note}
 
-This is NOT a summary or outline. This is a FULLY WRITTEN, PREACHABLE sermon. Write every word as if this will be preached to a real congregation this Sunday. Every point must be fully developed — no placeholders, no "(add illustration here)".
+This is a FULLY WRITTEN, PREACHABLE sermon on: {ref}. Not a summary or outline. Every point must be fully developed — no placeholders, no "(add illustration here)"."""
 
-⚠️ LENGTH REQUIREMENT — THIS IS MANDATORY, NOT A SUGGESTION:
-This sermon MUST be between {min_words} and {max_words} words long, matching a real {duration} spoken sermon at a natural preaching pace (~135-150 words per minute).
-Do NOT stop early. Do NOT summarize or compress sections to save space. If you reach the end of the structure below and are under {min_words} words, GO BACK and expand every section with more illustration, more explanation, more Scripture cross-reference, and more pastoral application until you reach the required length.
-A short, thin sermon is a FAILED response for this request. Treat {min_words} words as a hard floor.
+    # Section-based generation: a single completion reliably tops out around ~2000-2500 words
+    # regardless of instructed length, so for longer durations we generate in sequential chunks
+    # (each targeted at a safe per-call size) and stitch them together — far more reliable than
+    # asking for one giant blob or doing a vague "rewrite it longer" pass.
+    CHUNK_WORDS = 1800
+    num_chunks = max(1, round(target_words / CHUNK_WORDS))
 
-REQUIRED STRUCTURE — do not skip any section:
+    section_plan = [
+        "SERMON TITLE (with optional subtitle), OPENING HOOK (2-3 paragraphs — story/humor/testimony/question that grabs attention), FOUNDATIONAL SCRIPTURE (print the full text of the main passage), and INTRODUCTION (3-4 paragraphs: historical/biblical setting, why this matters today, emotional setup)",
+        "SERMON POINT 1 and SERMON POINT 2 — each with: a compelling title, the specific Scripture, a full explanation (3-4 paragraphs: meaning, historical/cultural context, theological significance, word study if helpful), a real-life illustration, a concrete application, and a warm pastoral encouragement",
+        "SERMON POINT 3 and SERMON POINT 4 (or however many more points naturally fit the message) — same full structure as above for each: title, Scripture, explanation, illustration, application, pastoral encouragement",
+        "CROSS-REFERENCES (5-8 supporting Scriptures with brief notes), APPLICATION SECTION (5-7 specific practical action steps for family/work/spiritual disciplines/relationships), SPIRITUAL REFLECTION (3-4 paragraphs — the emotional/spiritual climax, speaking directly to the congregation's heart), ALTAR CALL / INVITATION (full written-out invitation to salvation, recommitment, healing, and prayer, as if spoken live), and CLOSING PRAYER (full 3-4 paragraph pastoral prayer addressed to God, with thanksgiving, confession, petition, and declaration of faith)",
+    ]
+    # Collapse/expand the plan to match num_chunks (min 1, max = len(section_plan))
+    num_chunks = max(1, min(num_chunks, len(section_plan)))
+    if num_chunks < len(section_plan):
+        # Merge extra sections into the last chunk if we're doing fewer chunks than planned (short sermon)
+        merged = section_plan[:num_chunks - 1] + [" | ".join(section_plan[num_chunks - 1:])]
+        section_plan = merged
 
-**SERMON TITLE**
-[Powerful, memorable title]
-[Optional subtitle/tagline]
+    per_chunk_words = max(700, target_words // num_chunks)
+    chunk_max_tokens = min(6000, int(per_chunk_words * 1.7))
 
-**OPENING HOOK**
-[2-3 paragraphs: Start with a relatable story, Christian humor, surprising statistic, rhetorical question, or testimony that immediately captures attention and connects to the theme]
+    sermon_parts = []
+    running_sermon = ""
+    for i, section_desc in enumerate(section_plan):
+        is_first = (i == 0)
+        is_last = (i == len(section_plan) - 1)
+        continuity_note = "" if is_first else f"""
 
-**FOUNDATIONAL SCRIPTURE**
-[Print the FULL TEXT of the main passage in {bible_ver}]
+Here is the sermon written so far — do NOT repeat any of it, continue naturally in tone and flow from where it leaves off:
+---
+{running_sermon[-3000:]}
+---"""
+        chunk_prompt = f"""{base_context}
 
-**INTRODUCTION**
-[3-4 paragraphs covering: historical/biblical setting of the passage, why this topic matters urgently today, what the congregation will discover, emotional/spiritual setup for the message]
+Write ONLY the following section(s) of this sermon now, in full, fully-developed, preachable prose — aim for approximately {per_chunk_words} words for this portion:
+{section_desc}
+{continuity_note}
 
-**SERMON POINT 1: [Compelling Title]**
-Scripture: [Specific verse]
-[Full explanation — minimum 3-4 paragraphs with: what this verse means, historical/cultural context, theological significance, word study if helpful, how it connects to the main theme]
-Real-life illustration: [Specific story, example, or analogy]
-Application: [Concrete, specific ways to apply this point this week]
-Pastoral encouragement: [Warm, personal pastoral note]
+Do not add a title/heading unless this is the first section. Do not summarize — write it exactly as it would be preached live. Use **bold markdown headers** for each named part (e.g. **SERMON POINT 1: Title**)."""
+        chunk = ai(chunk_prompt, max_tokens=chunk_max_tokens)
+        sermon_parts.append(chunk.strip())
+        running_sermon = (running_sermon + "\n\n" + chunk).strip()
 
-**SERMON POINT 2: [Compelling Title]**
-[Same structure — full paragraphs, Scripture, illustration, application]
+    content = "\n\n".join(sermon_parts)
 
-**SERMON POINT 3: [Compelling Title]**
-[Same structure]
-
-**SERMON POINT 4: [Compelling Title]**
-[Same structure]
-
-**SERMON POINT 5: [Compelling Title]**
-[Same structure]
-
-**SERMON POINT 6: [Compelling Title]** (include if message naturally supports it)
-[Same structure]
-
-**CROSS-REFERENCES**
-[List 5-8 supporting Scriptures with brief notes on each one and how they reinforce the sermon]
-
-**APPLICATION SECTION**
-[How do we live this out? Give 5-7 SPECIFIC, PRACTICAL action steps — not vague suggestions. Family applications, work applications, spiritual disciplines, relationship applications]
-
-**SPIRITUAL REFLECTION**
-[3-4 paragraphs of conviction, encouragement, and challenge. This is the emotional/spiritual climax of the sermon. Speak directly to the congregation's heart. Address doubt, fear, struggle, and call them to deeper faith.]
-
-**ALTAR CALL / INVITATION**
-[Full, written-out altar call — include: invitation to salvation, invitation to recommitment, invitation to healing, invitation to prayer. Write this as if you are speaking it live. Warm, urgent, loving.]
-
-**CLOSING PRAYER**
-[Full pastoral prayer, 3-4 paragraphs, directly connected to the sermon theme. Address God directly. Include thanksgiving, confession, petition for the congregation, and declaration of faith.]"""
-
-    dynamic_max_tokens = min(16000, int(max_words * 1.6))
-    content = ai(prompt, max_tokens=dynamic_max_tokens)
-
-    # Safety net: GPT-4o often undershoots explicit word-count targets in a single completion.
-    # A true CONTINUATION loop (pick up where it left off) works far more reliably than asking
-    # the model to "rewrite it longer" — rewrites tend to collapse back to a similar length.
-    continuation_attempts = 0
-    max_attempts = 4
-    while len(content.split()) < int(min_words * 0.85) and continuation_attempts < max_attempts:
-        continuation_attempts += 1
+    # Final safety net: one continuation pass if we're still meaningfully short of the floor
+    if len(content.split()) < int(min_words * 0.8):
         remaining_words = max(500, min_words - len(content.split()))
-        continue_prompt = f"""You are continuing a sermon in progress. Below is everything written so far for a {duration} sermon on "{ref}" (target length: {min_words}-{max_words} words total).
+        continue_prompt = f"""{base_context}
 
-Do NOT repeat, summarize, or rewrite anything already written. Pick up exactly where it left off and keep writing, following the same REQUIRED STRUCTURE as the original instructions (any remaining sermon points, then Cross-References, Application Section, Spiritual Reflection, Altar Call/Invitation, and Closing Prayer — whichever of these are not yet present below). Add approximately {remaining_words} more words of full, developed, preachable content — no placeholders.
+Here is the sermon written so far ({len(content.split())} words). It still needs to reach at least {min_words} words total for a {duration} sermon.
 
 SERMON SO FAR:
 {content}
 
-CONTINUE WRITING FROM EXACTLY WHERE IT LEFT OFF (do not repeat any of the above):"""
-        continuation = ai(continue_prompt, max_tokens=dynamic_max_tokens, temperature=0.7)
+Continue writing from exactly where it leaves off (do not repeat anything above). Add the CLOSING PRAYER if not already present, and otherwise deepen/expand the existing sections with more illustration, application, and pastoral depth — aim for roughly {remaining_words} more words."""
+        continuation = ai(continue_prompt, max_tokens=min(6000, int(remaining_words * 1.7)), temperature=0.7)
         if continuation.strip():
             content = content.rstrip() + "\n\n" + continuation.strip()
 
