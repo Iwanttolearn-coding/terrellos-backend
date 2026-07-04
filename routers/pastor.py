@@ -241,17 +241,25 @@ Pastoral encouragement: [Warm, personal pastoral note]
     dynamic_max_tokens = min(16000, int(max_words * 1.6))
     content = ai(prompt, max_tokens=dynamic_max_tokens)
 
-    # Safety net: if the model still comes in short, ask it to continue/expand once
-    if len(content.split()) < int(min_words * 0.7):
-        continuation_prompt = f"""The sermon you just wrote is too short ({len(content.split())} words). It needs to be {min_words}-{max_words} words for a {duration} sermon.
-Here is what you wrote so far:
+    # Safety net: GPT-4o often undershoots explicit word-count targets in a single completion.
+    # A true CONTINUATION loop (pick up where it left off) works far more reliably than asking
+    # the model to "rewrite it longer" — rewrites tend to collapse back to a similar length.
+    continuation_attempts = 0
+    max_attempts = 4
+    while len(content.split()) < int(min_words * 0.85) and continuation_attempts < max_attempts:
+        continuation_attempts += 1
+        remaining_words = max(500, min_words - len(content.split()))
+        continue_prompt = f"""You are continuing a sermon in progress. Below is everything written so far for a {duration} sermon on "{ref}" (target length: {min_words}-{max_words} words total).
 
+Do NOT repeat, summarize, or rewrite anything already written. Pick up exactly where it left off and keep writing, following the same REQUIRED STRUCTURE as the original instructions (any remaining sermon points, then Cross-References, Application Section, Spiritual Reflection, Altar Call/Invitation, and Closing Prayer — whichever of these are not yet present below). Add approximately {remaining_words} more words of full, developed, preachable content — no placeholders.
+
+SERMON SO FAR:
 {content}
 
-Rewrite and EXPAND this into a complete sermon of AT LEAST {min_words} words, keeping the same structure, title, and theme, but developing every section with significantly more depth, illustration, and application. Output the full expanded sermon only."""
-        expanded = ai(continuation_prompt, max_tokens=dynamic_max_tokens, temperature=0.7)
-        if len(expanded.split()) > len(content.split()):
-            content = expanded
+CONTINUE WRITING FROM EXACTLY WHERE IT LEFT OFF (do not repeat any of the above):"""
+        continuation = ai(continue_prompt, max_tokens=dynamic_max_tokens, temperature=0.7)
+        if continuation.strip():
+            content = content.rstrip() + "\n\n" + continuation.strip()
 
     extras = {}
     if req.generateExtras:
