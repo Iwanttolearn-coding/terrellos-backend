@@ -129,9 +129,13 @@ class SermonRequest(BaseModel):
 class SimpleRequest(BaseModel):
     topic: Optional[str] = ""
     scripture: Optional[str] = ""
+    passage: Optional[str] = ""
     name: Optional[str] = ""
     question: Optional[str] = ""
     denomination: Optional[str] = ""
+    audience: Optional[str] = ""
+    mode: Optional[str] = "quick"        # quick | 6week | 8week | fillblank
+    custom_prompt: Optional[str] = ""    # frontend-built prompt for multi-week series etc — honored if present
     bibleVersion: Optional[str] = "NIV"
     email: Optional[str] = ""
     user_id: Optional[str] = None
@@ -368,46 +372,60 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
 @router.post("/bible-study")
 async def bible_study(req: SimpleRequest, request: Request):
     await _require_access(request, req.email or "")
-    ref = req.scripture or req.topic or "John 3:16"
+    ref = req.scripture or req.passage or req.topic or "John 3:16"
     bible_ver = req.bibleVersion or "NIV"
+    mode = (req.mode or "quick").lower()
 
-    prompt = f"""Create a COMPREHENSIVE, CHURCH-READY Bible study guide for: {ref}
+    # Multi-week series (6-Week / 8-Week) or any frontend-built custom prompt —
+    # honor it directly instead of silently falling back to the generic single-topic template.
+    # These need a much larger token budget since they cover 6-8 full weeks of rich content.
+    if req.custom_prompt and req.custom_prompt.strip():
+        prompt = req.custom_prompt.strip()
+        if mode in ("6week", "8week"):
+            max_out_tokens = 16000
+        else:
+            max_out_tokens = 8000
+    else:
+        # Generic single-topic comprehensive study (Quick Study mode / no custom prompt supplied)
+        max_out_tokens = 8000
+        prompt = f"""Create a COMPREHENSIVE, CHURCH-READY Bible study guide for: {ref}
 Bible version: {bible_ver}
 Denomination context: {req.denomination or "broadly evangelical"}
+{f"Audience: {req.audience}" if req.audience else ""}
 
-Include ALL of the following — fully written, not placeholders:
+Include ALL of the following — fully written, not placeholders. Every section must be fully developed with real substance — do NOT shorten later sections to save space:
 
-1. TOPIC OVERVIEW (2-3 paragraphs introducing the study)
+1. TOPIC OVERVIEW (2-3 full paragraphs introducing the study)
 
 2. SCRIPTURE READING
 [Full text of the passage in {bible_ver}]
 
 3. HISTORICAL BACKGROUND
-[Author, date, audience, cultural context, why this was written, 3-4 paragraphs]
+[Author, date, audience, cultural context, why this was written, 3-4 full paragraphs]
 
 4. VERSE-BY-VERSE COMMENTARY
 [Detailed notes on every verse or section — include word studies, original language notes where helpful]
 
 5. THEOLOGICAL THEMES
-[3-4 major themes with full explanations and cross-references]
+[3-4 major themes — each theme MUST have its own 2-3 paragraph full explanation with specific cross-references, not just a single sentence]
 
-6. DISCUSSION QUESTIONS (8 open-ended questions for group discussion)
+6. DISCUSSION QUESTIONS (8 open-ended questions for group discussion, each with a brief 1-2 sentence note on what it's probing for)
 
 7. FILL-IN-THE-BLANK (8 completion questions with answer key)
 
 8. MULTIPLE CHOICE (6 questions with 4 options each, and answer key at the end)
 
 9. PERSONAL REFLECTION
-[Deep reflection prompt, 2-3 paragraphs for individual application]
+[Deep reflection prompt, 2-3 full paragraphs for individual application]
 
 10. CLOSING PRAYER (full group prayer for the study)
 
 11. TEACHER/LEADER NOTES
 [Tips for leading this study, common questions that arise, theological pitfalls to address, suggested time breakdown]
 
-Make it rich, detailed, and ready to use in a real church Bible study setting."""
+Make it rich, detailed, and ready to use in a real church Bible study setting. Sections 5 and 6 are just as important as sections 1-4 — give them equal depth and effort."""
 
-    content = ai(prompt, max_tokens=4000)
+    content = ai(prompt, max_tokens=max_out_tokens)
     # Auto-save bible study to Supabase
     topic_text = req.topic or req.scripture or "Bible Study"
     saved_id = await save_bible_study(
