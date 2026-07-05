@@ -135,6 +135,8 @@ _CORS_ENV = os.getenv("CORS_ORIGINS", "")
 _CORS_ALLOWED = [o.strip() for o in _CORS_ENV.split(",") if o.strip()] or [
     # ── Production domains ──────────────────────────────────────────────────
     "https://pastoraiconnect.com",
+    "https://pastorsconnect.com",
+    "https://www.pastorsconnect.com",
     "https://app.tm-dezigns.com",
     "https://app.tm-dezigns.online",
     "https://heavenlyeternalecho.com",
