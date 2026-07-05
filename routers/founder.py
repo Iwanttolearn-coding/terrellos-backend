@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 router = APIRouter(prefix="/v1/founder", tags=["Founder"])
 
-FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+FOUNDER_EMAILS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com", "millsterrell5@gmail.com"}
 AUDIT_LOG = []
 
 def verify_founder(email: str):

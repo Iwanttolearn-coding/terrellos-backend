@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/pastor", tags=["Pastor AI"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-FOUNDERS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com"}
+FOUNDERS = {"millzterrell210@icloud.com", "millzterrell5@gmail.com", "millsterrell5@gmail.com"}
 
 def _email_from_request(request: Request, body_email: str) -> str:
     """Extract user email from body or Bearer JWT token. Falls back to 'anonymous'."""

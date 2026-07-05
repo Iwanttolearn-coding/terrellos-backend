@@ -103,6 +103,7 @@ APP_REGISTRY = {
 FOUNDER_EMAILS = {
     "millzterrell210@icloud.com",
     "millzterrell5@gmail.com",
+    "millsterrell5@gmail.com",
 }
 
 def is_founder(email: Optional[str]) -> bool:
