@@ -173,21 +173,19 @@ async def analyze_word(req: WordStudyRequest, request: Request):
     saved_id = None
     try:
         from pastor_db import save_generated_content
-        email = req.email or "anonymous"
-        saved_id = save_generated_content(
-            user_email=email,
+        from routers.auth import email_from_request as _auth_email
+        email = req.email or _auth_email(request) or "anonymous"
+        saved_id = await save_generated_content(
+            user_id=email,
             content_type="word_study",
             title=f"Word Study: {req.word}" + (f" ({req.passage})" if req.passage else ""),
             content=content,
-            metadata={
-                "word": req.word,
-                "passage": req.passage,
-                "language": req.language,
-                "depth": req.depth,
-            }
+            topic=req.word,
+            scripture=req.passage or "",
         )
-    except Exception:
-        pass
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("word_study save failed: %s", _e)
 
     return {
         "success":   True,
@@ -220,16 +218,19 @@ async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     saved_id = None
     try:
         from pastor_db import save_generated_content
-        email = req.email or "anonymous"
-        saved_id = save_generated_content(
-            user_email=email,
+        from routers.auth import email_from_request as _auth_email
+        email = req.email or _auth_email(request) or "anonymous"
+        saved_id = await save_generated_content(
+            user_id=email,
             content_type="word_study_passage",
             title=f"Word Study: {req.passage}",
             content=content,
-            metadata={"passage": req.passage, "version": req.version, "depth": req.depth},
+            topic="",
+            scripture=req.passage or "",
         )
-    except Exception:
-        pass
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("passage_word_study save failed: %s", _e)
 
     return {
         "success":    True,
