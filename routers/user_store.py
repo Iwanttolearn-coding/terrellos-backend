@@ -110,3 +110,17 @@ def public_user(row: Dict[str, Any]) -> Dict[str, Any]:
     if not row:
         return {}
     return {k: v for k, v in row.items() if k not in ("password_hash",)}
+
+async def get_user_by_reset_token(token: str) -> Optional[Dict[str, Any]]:
+    if not configured() or not token:
+        return None
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/{TABLE}",
+            headers=_headers(),
+            params={"reset_token": f"eq.{token}", "limit": "1"},
+        )
+    if r.status_code != 200:
+        raise RuntimeError(f"reset token lookup failed: {r.text[:200]}")
+    rows = r.json() or []
+    return rows[0] if rows else None

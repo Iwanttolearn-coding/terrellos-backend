@@ -143,6 +143,9 @@ async def login(payload: LoginRequest):
     if not payload.password or not user_store.verify_password(payload.password, row.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Incorrect email or password.")
 
+    if row.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="This account has been deactivated. Contact support for help.")
+
     token_data = _token_data_from_row(row)
     token = create_token(token_data)
     return {
@@ -287,3 +290,137 @@ async def founder_bypass(payload: LoginRequest):
 async def auth_health():
     return {"success": True, "status": "online", "service": "Auth",
              "supabase": user_store.configured(), "storage": "persistent"}
+
+
+# ============================================================
+# Change password (authenticated user changes their own password)
+# ============================================================
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(payload: ChangePasswordRequest, request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    claims = decode_token(token)
+    email = claims.get("email", "")
+    if not email:
+        raise HTTPException(status_code=401, detail="Could not identify user from token")
+
+    if email.lower().strip() in FOUNDER_EMAILS:
+        raise HTTPException(status_code=400, detail="Founder accounts do not use password storage — nothing to change here.")
+
+    if not payload.new_password or len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+
+    if not user_store.configured():
+        raise HTTPException(503, "Account storage is not configured — please try again shortly")
+
+    row = await user_store.get_user_by_email(email)
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if not user_store.verify_password(payload.current_password, row.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    new_hash = user_store.hash_password(payload.new_password)
+    await user_store.update_user(email, {"password_hash": new_hash})
+    return {"success": True, "message": "Password updated successfully"}
+
+
+# ============================================================
+# Forgot / reset password (unauthenticated — email-token based)
+# ============================================================
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+_GENERIC_FORGOT_MSG = "If an account exists for that email, a password reset link has been sent."
+
+
+@router.post("/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest):
+    from . import mailer
+    email = (payload.email or "").lower().strip()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Valid email address required")
+
+    # Never reveal whether an account exists — always return the same generic message.
+    if email in FOUNDER_EMAILS or not user_store.configured():
+        return {"success": True, "message": _GENERIC_FORGOT_MSG}
+
+    try:
+        row = await user_store.get_user_by_email(email)
+    except Exception:
+        return {"success": True, "message": _GENERIC_FORGOT_MSG}
+
+    if not row:
+        return {"success": True, "message": _GENERIC_FORGOT_MSG}
+
+    reset_token = uuid.uuid4().hex + uuid.uuid4().hex
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    try:
+        await user_store.update_user(email, {"reset_token": reset_token, "reset_token_expires": expires})
+    except Exception:
+        return {"success": True, "message": _GENERIC_FORGOT_MSG}
+
+    frontend_url = os.getenv("FRONTEND_URL") or os.getenv("PASTOR_FRONTEND_URL") or "https://pastoraiconnect.com"
+    reset_link = f"{frontend_url.rstrip('/')}/reset-password?token={reset_token}"
+
+    if mailer.configured():
+        await mailer.send_email(
+            to=email,
+            subject="Reset your Pastor AI password",
+            html=f"""
+            <div style="font-family:sans-serif;max-width:480px;margin:auto;">
+              <h2>Reset your password</h2>
+              <p>We received a request to reset your Pastor AI password. This link expires in 1 hour.</p>
+              <p><a href="{reset_link}" style="background:#1a2744;color:#fff;padding:12px 20px;
+                 border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a></p>
+              <p>If you didn't request this, you can safely ignore this email.</p>
+            </div>
+            """,
+        )
+
+    return {"success": True, "message": _GENERIC_FORGOT_MSG}
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest):
+    if not payload.token:
+        raise HTTPException(400, "Reset token required")
+    if not payload.new_password or len(payload.new_password) < 6:
+        raise HTTPException(400, "New password must be at least 6 characters")
+    if not user_store.configured():
+        raise HTTPException(503, "Account storage is not configured — please try again shortly")
+
+    row = await user_store.get_user_by_reset_token(payload.token)
+    if not row:
+        raise HTTPException(400, "This reset link is invalid or has already been used")
+
+    expires_raw = row.get("reset_token_expires")
+    if not expires_raw:
+        raise HTTPException(400, "This reset link is invalid or has already been used")
+    try:
+        expires_at = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(400, "This reset link is invalid")
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(400, "This reset link has expired — please request a new one")
+
+    new_hash = user_store.hash_password(payload.new_password)
+    await user_store.update_user(row["email"], {
+        "password_hash": new_hash,
+        "reset_token": None,
+        "reset_token_expires": None,
+    })
+    return {"success": True, "message": "Password reset successfully — you can now log in"}

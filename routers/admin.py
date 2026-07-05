@@ -42,6 +42,7 @@ class UpdateUserRequest(BaseModel):
     role: Optional[str] = None
     plan: Optional[str] = None
     notes: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 @router.get("/stats")
@@ -99,6 +100,8 @@ async def admin_update_user(user_id: str, payload: UpdateUserRequest, _admin=Dep
         updates["role"] = payload.role
     if payload.plan:
         updates["plan"] = payload.plan
+    if payload.is_active is not None:
+        updates["is_active"] = payload.is_active
     if not updates:
         return {"success": True, "updated": email, "message": "Nothing to update"}
     try:
