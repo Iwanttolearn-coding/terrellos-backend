@@ -51,7 +51,7 @@ class WordStudyRequest(BaseModel):
 
 class PassageWordStudyRequest(BaseModel):
     passage: str                           # e.g. "John 1:1-5" or "Genesis 1:1"
-    version: Optional[str] = "NIV"
+    version: Optional[str] = "en-kjv"      # any label accepted; resolved to a real public-domain version server-side
     depth: Optional[str] = "standard"
     focus_words: Optional[int] = 5        # how many key words to study
     email: Optional[str] = ""
@@ -131,8 +131,13 @@ Structure your response with these clear sections:
 """
 
 
-def build_passage_prompt(req: PassageWordStudyRequest) -> str:
-    return f"""Perform word studies for the {req.focus_words} most theologically significant words in: {req.passage} ({req.version})
+def build_passage_prompt(req: PassageWordStudyRequest, real_passage: Optional[dict] = None) -> str:
+    grounding = ""
+    if real_passage:
+        grounding = (f"\nUse this EXACT real scripture text as the passage of record "
+                     f"(do not substitute different wording): {real_passage['reference']} "
+                     f"({real_passage['version']})\n{real_passage['text']}\n")
+    return f"""Perform word studies for the {req.focus_words} most theologically significant words in: {req.passage} ({req.version}){grounding}
 
 For EACH key word, provide:
 
@@ -206,8 +211,16 @@ async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     if not req.passage or not req.passage.strip():
         raise HTTPException(400, "Scripture passage is required")
-    
-    prompt     = build_passage_prompt(req)
+
+    from bible_source import resolve_version, fetch_passage_text
+    resolved_version = resolve_version(req.version)
+    real_passage = None
+    try:
+        real_passage = await fetch_passage_text(resolved_version, req.passage)
+    except Exception:
+        real_passage = None
+
+    prompt     = build_passage_prompt(req, real_passage)
     max_tokens = 4000
     
     try:
@@ -235,7 +248,8 @@ async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     return {
         "success":    True,
         "passage":    req.passage,
-        "version":    req.version,
+        "version":    resolved_version,
+        "grounded_in_real_text": bool(real_passage),
         "content":    content,
         "word_count": len(content.split()),
         "saved_id":   saved_id,

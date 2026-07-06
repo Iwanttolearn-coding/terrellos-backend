@@ -213,3 +213,93 @@ async def get_chapter(version: str, book: str, chapter: int) -> dict:
         "full_text": full_text,
         "reference": f"{book} {chapter}",
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCTION SWEEP ADDITION — shared reference resolver for OTHER generation
+# endpoints (Bible Study Builder, Word Study passage mode) so they ground on
+# the SAME real, verified public-domain text instead of asking the AI to
+# recite scripture from memory under a copyrighted version label like "NIV".
+# ══════════════════════════════════════════════════════════════════════════════
+import re as _re
+
+DEFAULT_VERSION = "en-kjv"
+
+# Versions historically passed around the app as free-text defaults/labels that
+# aren't real sourceable versions (NIV, ESV, etc. require licensing we don't have).
+# Map them to our nearest real, public-domain equivalent rather than erroring —
+# these callers pass a version as a hint/label, not a hard requirement.
+_VERSION_ALIASES = {
+    "niv": "en-kjv", "esv": "en-kjv", "nlt": "en-kjv", "nasb": "en-kjv",
+    "msg": "en-kjv", "amp": "en-kjv", "tpt": "en-kjv", "csb": "en-kjv",
+    "kjv": "en-kjv", "asv": "en-asv", "geneva": "en-gnv",
+}
+
+_REF_RE = _re.compile(
+    r'^\s*(?P<book>(?:[1-3]\s?)?[A-Za-z][A-Za-z\s]*?)\s+(?P<chapter>\d+)'
+    r'(?::(?P<vstart>\d+)(?:-(?P<vend>\d+))?)?\s*$'
+)
+
+
+def resolve_version(version: Optional[str]) -> str:
+    """Map any incoming version hint (including copyrighted labels like 'NIV') to
+    one of our real, sourced, public-domain versions. Never raises."""
+    if not version:
+        return DEFAULT_VERSION
+    v = version.strip()
+    if v in ALLOWED_VERSIONS:
+        return v
+    return _VERSION_ALIASES.get(v.lower(), DEFAULT_VERSION)
+
+
+def parse_reference(ref: str):
+    """Parse a free-text reference like 'John 3:16', 'John 3:16-21', or 'Romans 8'
+    into {book, chapter, verse_start, verse_end}. Returns None if it doesn't look
+    like a single, specific passage (e.g. a topic name like 'Faith' or 'Prayer')."""
+    if not ref:
+        return None
+    m = _REF_RE.match(ref.strip())
+    if not m:
+        return None
+    book = m.group("book").strip()
+    if not book:
+        return None
+    return {
+        "book": book,
+        "chapter": int(m.group("chapter")),
+        "verse_start": int(m.group("vstart")) if m.group("vstart") else None,
+        "verse_end": int(m.group("vend")) if m.group("vend") else None,
+    }
+
+
+async def fetch_passage_text(version: str, ref: str) -> Optional[dict]:
+    """Best-effort real-text fetch for a free-text reference from other generation
+    endpoints (Bible Study Builder, Word Study). Returns {reference, text, version}
+    or None if the ref doesn't parse or the lookup fails — callers should degrade
+    gracefully (e.g. still generate a topical study) rather than error out, since
+    this input is much less structured than the dedicated /v1/bible/* routes."""
+    parsed = parse_reference(ref)
+    if not parsed:
+        return None
+    v = resolve_version(version)
+    try:
+        if parsed["verse_start"] and not parsed["verse_end"]:
+            data = await get_verse(v, parsed["book"], parsed["chapter"], parsed["verse_start"])
+            return {"reference": data["reference"], "text": data["text"], "version": v}
+        chapter_data = await get_chapter(v, parsed["book"], parsed["chapter"])
+        verses = chapter_data["verses"]
+        if parsed["verse_start"]:
+            vs, ve = parsed["verse_start"], parsed["verse_end"] or parsed["verse_start"]
+            verses = [x for x in verses if x["verse"] and vs <= int(x["verse"]) <= ve]
+            if not verses:
+                return None
+            text = "\n".join(f"{x['verse']}. {x['text']}" for x in verses)
+            reference = f"{parsed['book']} {parsed['chapter']}:{vs}" + (f"-{ve}" if ve != vs else "")
+        else:
+            text = chapter_data["full_text"]
+            reference = chapter_data["reference"]
+        return {"reference": reference, "text": text, "version": v}
+    except BibleSourceError:
+        return None
+    except Exception:
+        return None

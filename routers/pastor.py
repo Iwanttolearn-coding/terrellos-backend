@@ -121,7 +121,7 @@ class SermonRequest(BaseModel):
     audience: Optional[str] = ""
     duration: Optional[str] = "30 minutes"
     style: Optional[str] = ""           # pentecostal | baptist | nondenominational | youth | evangelistic | prophetic | teaching | conference
-    bibleVersion: Optional[str] = "NIV"
+    bibleVersion: Optional[str] = "en-kjv"  # any label accepted; resolved to a real public-domain version server-side
     user_id: Optional[str] = None
     email: Optional[str] = ""
     generateExtras: Optional[bool] = True
@@ -199,7 +199,13 @@ async def sermon(req: SermonRequest, request: Request):
     audience   = req.audience or "general congregation"
     duration   = req.duration or "30 minutes"
     style      = req.style or req.sermonType or "expository"
-    bible_ver  = req.bibleVersion or "NIV"
+    from bible_source import resolve_version, fetch_passage_text
+    bible_ver  = resolve_version(req.bibleVersion)
+    real_passage = None
+    try:
+        real_passage = await fetch_passage_text(bible_ver, ref)
+    except Exception:
+        real_passage = None
 
     style_instructions = {
         "pentecostal":       "Use Spirit-filled, charismatic language. Include references to the Holy Spirit, spiritual gifts, and anointing. Energetic and emotionally engaging.",
@@ -223,6 +229,7 @@ async def sermon(req: SermonRequest, request: Request):
 - Approximate duration: {duration}
 - Bible version: {bible_ver}
 {style_note}
+{f"- REAL scripture text of record (quote exactly, do not substitute wording): " + real_passage["reference"] + " — " + real_passage["text"] if real_passage else ""}
 
 This is a FULLY WRITTEN, PREACHABLE sermon on: {ref}. Not a summary or outline. Every point must be fully developed — no placeholders, no "(add illustration here)"."""
 
@@ -360,6 +367,7 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
         "denomination": denom,
         "audience": audience,
         "bible_version": bible_ver,
+        "grounded_in_real_text": bool(real_passage),
         "extras": extras,
         "word_count": len(content.split()),
         "saved_id": saved_id,
@@ -373,7 +381,13 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
 async def bible_study(req: SimpleRequest, request: Request):
     await _require_access(request, req.email or "")
     ref = req.scripture or req.passage or req.topic or "John 3:16"
-    bible_ver = req.bibleVersion or "NIV"
+    from bible_source import resolve_version, fetch_passage_text
+    bible_ver = resolve_version(req.bibleVersion)
+    real_passage = None
+    try:
+        real_passage = await fetch_passage_text(bible_ver, ref)
+    except Exception:
+        real_passage = None
     mode = (req.mode or "quick").lower()
 
     # Multi-week series (6-Week / 8-Week) or any frontend-built custom prompt —
@@ -398,7 +412,7 @@ Include ALL of the following — fully written, not placeholders. Every section 
 1. TOPIC OVERVIEW (2-3 full paragraphs introducing the study)
 
 2. SCRIPTURE READING
-[Full text of the passage in {bible_ver}]
+{f"Use this EXACT real scripture text as the passage of record (do not substitute different wording): " + chr(10) + real_passage["reference"] + " (" + real_passage["version"] + ")" + chr(10) + real_passage["text"] if real_passage else f"[Full text of the passage in {bible_ver} — quote it accurately from the public-domain source translation]"}
 
 3. HISTORICAL BACKGROUND
 [Author, date, audience, cultural context, why this was written, 3-4 full paragraphs]
@@ -433,7 +447,7 @@ Make it rich, detailed, and ready to use in a real church Bible study setting. S
         title=f"Bible Study: {topic_text}",
         content=content,
         passage=req.scripture or "",
-        version=req.bibleVersion or "NIV",
+        version=bible_ver,
         topic=req.topic or "",
     )
     _uid2 = _email_from_request(request, req.email or "")
@@ -448,6 +462,8 @@ Make it rich, detailed, and ready to use in a real church Bible study setting. S
     return {
         "success": True,
         "content": content,
+        "bible_version": bible_ver,
+        "grounded_in_real_text": bool(real_passage),
         "word_count": len(content.split()),
         "saved_id": saved_id,
         "saved": bool(saved_id),
@@ -460,7 +476,8 @@ Make it rich, detailed, and ready to use in a real church Bible study setting. S
 async def devotional(req: SimpleRequest, request: Request):
     await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     topic_text = req.topic or req.scripture or "God's grace"
-    bible_ver  = req.bibleVersion or "NIV"
+    from bible_source import resolve_version
+    bible_ver  = resolve_version(req.bibleVersion)
 
     prompt = f"""Write a COMPLETE, DEEPLY PERSONAL daily devotional on: {topic_text}
 Bible version: {bible_ver}
