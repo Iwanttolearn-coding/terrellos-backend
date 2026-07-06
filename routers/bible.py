@@ -8,7 +8,7 @@ from typing import Optional
 import os, httpx, base64
 from openai import OpenAI
 
-from bible_source import get_bible_versions, get_verse, get_chapter, BibleSourceError, ALLOWED_VERSIONS
+from bible_source import get_bible_versions, get_verse, get_chapter, resolve_version, BibleSourceError, ALLOWED_VERSIONS
 from pastor_db import save_bible_study
 
 router = APIRouter(prefix="/v1/bible", tags=["Bible"])
@@ -63,10 +63,26 @@ async def _elevenlabs_speak(text: str) -> Optional[str]:
 
 @router.post("/read")
 async def read_bible(req: BibleReadRequest, request: Request):
+    """Bible Reader with Pastor Mills voice.
+
+    Grounds scripture text in the REAL public-domain source (bible_source.py /
+    the wldeh CDN) rather than letting the AI recall/paraphrase verse text from
+    memory -- this is required for copyright safety since translations like
+    NIV, ESV, NLT, NASB, MSG, AMP, TPT, CSB are all still under active license.
+
+    UX-wise, the user's chosen translation label (e.g. "MSG", "AMP") is kept
+    and echoed back for display and used to flavor the AI's teaching *style*
+    only -- the actual quoted scripture text always comes from a verified
+    public-domain source (KJV/ASV-family), never invented or paraphrased to
+    imitate a copyrighted translation's wording.
+    """
     from routers.pastor import _require_auth_and_usage
     await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     if not client:
         return {"success": False, "error": "OpenAI not configured"}
+
+    display_version = req.translation or "NIV"
+    real_version = resolve_version(req.translation)
 
     verse_ref = f"{req.book} {req.chapter}"
     if req.verse_start:
@@ -74,19 +90,60 @@ async def read_bible(req: BibleReadRequest, request: Request):
         if req.verse_end:
             verse_ref += f"-{req.verse_end}"
 
-    prompt = f"""Read {verse_ref} ({req.translation}) and provide:
+    # 1) Fetch the REAL, public-domain scripture text first -- this is the
+    # scripture of record. Never generated/guessed by the model.
+    scripture_text = ""
+    fetch_error = None
+    try:
+        if req.verse_start and not req.verse_end:
+            data = await get_verse(real_version, req.book, req.chapter, req.verse_start)
+            scripture_text = data["text"]
+        else:
+            chapter_data = await get_chapter(real_version, req.book, req.chapter)
+            verses = chapter_data["verses"]
+            if req.verse_start:
+                vs, ve = req.verse_start, req.verse_end or req.verse_start
+                verses = [v for v in verses if v["verse"] and vs <= int(v["verse"]) <= ve]
+            if verses:
+                scripture_text = "\n".join(f"{v['verse']}. {v['text']}" for v in verses)
+            else:
+                scripture_text = chapter_data.get("full_text", "")
+    except BibleSourceError as e:
+        fetch_error = e.message
+    except Exception as e:
+        fetch_error = str(e)
 
-1. SCRIPTURE TEXT: The actual text of {verse_ref} from the {req.translation} translation.
+    if not scripture_text:
+        return {
+            "success": False,
+            "error": fetch_error or f"Could not retrieve real scripture text for {verse_ref}. Please check the book/chapter/verse and try again.",
+        }
 
-2. TEACHING: A deep, pastoral explanation of this passage. Include:
-   - Historical and cultural context
-   - Key word meanings
-   - The central message Pastor Mills wants the listener to take away
-   - At least 2 supporting scriptures from elsewhere in the Bible
-   - A practical application for daily life today
-   - A short closing prayer for the listener
+    # 2) Generate the teaching, grounded in that real text. The requested
+    # translation label only shapes tone/voice -- it never invents wording.
+    prompt = f"""You are given the ACTUAL scripture text below -- a real quotation from a
+verified public-domain translation, not your memory of any translation. Use ONLY this
+text as the scripture of record; do not substitute or paraphrase it into a different
+translation's wording (including {display_version}).
 
-Write as if Pastor Mills is sitting with the listener, reading and explaining the Word. Warm, direct, biblical, never vague. Language: {req.language}."""
+REFERENCE: {verse_ref}
+TEXT:
+{scripture_text}
+
+Requested reading style/voice: {display_version} (use this only to inform tone -- e.g. more
+conversational and modern if a paraphrase-style version was requested, more formal/literal if a
+study translation was requested -- never to alter or invent the actual scripture wording above).
+
+Now provide a TEACHING section: a deep, pastoral explanation of this passage as Pastor Mills. Include:
+- Historical and cultural context
+- Key word meanings
+- The central message Pastor Mills wants the listener to take away
+- At least 2 supporting scriptures from elsewhere in the Bible
+- A practical application for daily life today
+- A short closing prayer for the listener
+
+Write as if Pastor Mills is sitting with the listener, having just read the passage aloud, and is
+now explaining the Word. Warm, direct, biblical, never vague. Language: {req.language}."""
 
     try:
         resp = client.chat.completions.create(
@@ -95,43 +152,32 @@ Write as if Pastor Mills is sitting with the listener, reading and explaining th
                 {"role": "system", "content": PASTOR_SYSTEM},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=2500,
-            temperature=0.72,
+            max_tokens=2200,
+            temperature=0.7,
         )
-        full_text = resp.choices[0].message.content.strip()
+        teaching = resp.choices[0].message.content.strip()
+    except Exception:
+        return {"success": False, "error": "Teaching generation failed. Please try again in a moment."}
 
-        # Split scripture from teaching
-        scripture_text = ""
-        teaching = full_text
-        if "SCRIPTURE TEXT:" in full_text.upper():
-            parts = full_text.split("TEACHING:", 1) if "TEACHING:" in full_text else full_text.split("2.", 1)
-            if len(parts) == 2:
-                scripture_text = parts[0].replace("1.", "").replace("SCRIPTURE TEXT:", "").strip()
-                teaching = parts[1].strip()
-            else:
-                scripture_text = ""
-                teaching = full_text
+    audio_base64 = None
+    audio_error  = None
+    if req.voice:
+        speak_text = (scripture_text + "\n\n" + teaching)[:4500]
+        audio_base64 = await _elevenlabs_speak(speak_text)
+        if not audio_base64:
+            audio_error = "ElevenLabs audio unavailable. Check ELEVENLABS_API_KEY."
 
-        audio_base64 = None
-        audio_error  = None
-        if req.voice:
-            speak_text = (scripture_text + "\n\n" + teaching)[:4500]
-            audio_base64 = await _elevenlabs_speak(speak_text)
-            if not audio_base64:
-                audio_error = "ElevenLabs audio unavailable. Check ELEVENLABS_API_KEY."
-
-        return {
-            "success":       True,
-            "reference":     verse_ref,
-            "translation":   req.translation,
-            "scriptureText": scripture_text,
-            "teaching":      teaching,
-            "audio_base64":  audio_base64,
-            "audio_error":   audio_error,
-            "voice_provider": "elevenlabs" if audio_base64 else None,
-        }
-    except Exception as e:
-        return {"success": False, "error": "Bible reading generation failed. Please try again in a moment."}
+    return {
+        "success":       True,
+        "reference":     verse_ref,
+        "translation":   display_version,
+        "source_version": real_version,
+        "scriptureText": scripture_text,
+        "teaching":      teaching,
+        "audio_base64":  audio_base64,
+        "audio_error":   audio_error,
+        "voice_provider": "elevenlabs" if audio_base64 else None,
+    }
 
 @router.get("/health")
 async def bible_health():

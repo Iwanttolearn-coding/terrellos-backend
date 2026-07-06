@@ -248,7 +248,8 @@ async def passage_word_studies(req: PassageWordStudyRequest, request: Request):
     return {
         "success":    True,
         "passage":    req.passage,
-        "version":    resolved_version,
+        "version":    req.version or resolved_version,
+        "source_version": resolved_version,
         "grounded_in_real_text": bool(real_passage),
         "content":    content,
         "word_count": len(content.split()),

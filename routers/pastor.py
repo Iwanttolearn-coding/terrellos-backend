@@ -200,6 +200,7 @@ async def sermon(req: SermonRequest, request: Request):
     duration   = req.duration or "30 minutes"
     style      = req.style or req.sermonType or "expository"
     from bible_source import resolve_version, fetch_passage_text
+    display_version = req.bibleVersion or "NIV"
     bible_ver  = resolve_version(req.bibleVersion)
     real_passage = None
     try:
@@ -227,7 +228,7 @@ async def sermon(req: SermonRequest, request: Request):
 - Denomination/tradition: {denom}
 - Target audience: {audience}
 - Approximate duration: {duration}
-- Bible version: {bible_ver}
+- Bible version (style/voice only -- the real quoted scripture text below always comes from a verified public-domain source, never invented or paraphrased to imitate {display_version}'s copyrighted wording): {display_version}
 {style_note}
 {f"- REAL scripture text of record (quote exactly, do not substitute wording): " + real_passage["reference"] + " — " + real_passage["text"] if real_passage else ""}
 
@@ -366,7 +367,8 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
         "style": style,
         "denomination": denom,
         "audience": audience,
-        "bible_version": bible_ver,
+        "bible_version": display_version,
+        "source_version": bible_ver,
         "grounded_in_real_text": bool(real_passage),
         "extras": extras,
         "word_count": len(content.split()),
@@ -382,6 +384,7 @@ async def bible_study(req: SimpleRequest, request: Request):
     await _require_access(request, req.email or "")
     ref = req.scripture or req.passage or req.topic or "John 3:16"
     from bible_source import resolve_version, fetch_passage_text
+    display_version = req.bibleVersion or "NIV"
     bible_ver = resolve_version(req.bibleVersion)
     real_passage = None
     try:
@@ -403,7 +406,8 @@ async def bible_study(req: SimpleRequest, request: Request):
         # Generic single-topic comprehensive study (Quick Study mode / no custom prompt supplied)
         max_out_tokens = 8000
         prompt = f"""Create a COMPREHENSIVE, CHURCH-READY Bible study guide for: {ref}
-Bible version: {bible_ver}
+Bible version (style/voice only -- quote the REAL scripture text of record below, never invented or paraphrased to imitate {display_version}'s copyrighted wording): {display_version}
+{f"REAL scripture text of record (quote exactly, do not substitute wording): " + real_passage["reference"] + " — " + real_passage["text"] if real_passage else ""}
 Denomination context: {req.denomination or "broadly evangelical"}
 {f"Audience: {req.audience}" if req.audience else ""}
 
@@ -462,7 +466,8 @@ Make it rich, detailed, and ready to use in a real church Bible study setting. S
     return {
         "success": True,
         "content": content,
-        "bible_version": bible_ver,
+        "bible_version": display_version,
+        "source_version": bible_ver,
         "grounded_in_real_text": bool(real_passage),
         "word_count": len(content.split()),
         "saved_id": saved_id,
@@ -476,11 +481,18 @@ Make it rich, detailed, and ready to use in a real church Bible study setting. S
 async def devotional(req: SimpleRequest, request: Request):
     await _require_auth_and_usage(request, getattr(req, "email", "") or "")
     topic_text = req.topic or req.scripture or "God's grace"
-    from bible_source import resolve_version
+    from bible_source import resolve_version, fetch_passage_text
+    display_version = req.bibleVersion or "NIV"
     bible_ver  = resolve_version(req.bibleVersion)
+    real_passage = None
+    try:
+        real_passage = await fetch_passage_text(bible_ver, req.scripture or topic_text)
+    except Exception:
+        real_passage = None
 
     prompt = f"""Write a COMPLETE, DEEPLY PERSONAL daily devotional on: {topic_text}
-Bible version: {bible_ver}
+Bible version (style/voice only -- quote real scripture text, never invented or paraphrased to imitate {display_version}'s copyrighted wording): {display_version}
+{f"REAL scripture text of record to use for the SCRIPTURE section (quote exactly): " + real_passage["reference"] + " — " + real_passage["text"] if real_passage else "If you reference a specific verse, only use text you are confident is public domain (KJV/ASV-style wording), and prefer describing the passage over quoting a modern translation verbatim."}
 
 Structure (write every section fully — no shortcuts):
 
@@ -507,7 +519,7 @@ Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
         provider="openai",
         extra={"type": "devotional", "word_count": len(content.split())},
     )
-    return {"success": True, "content": content, "word_count": len(content.split())}
+    return {"success": True, "content": content, "bible_version": display_version, "source_version": bible_ver, "grounded_in_real_text": bool(real_passage), "word_count": len(content.split())}
 
 # ── Martyr Study ──────────────────────────────────────────────────────────────
 
