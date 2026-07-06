@@ -11,9 +11,24 @@ intentionally NOT sourced or faked here.
 """
 import httpx
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger("bible_source")
+
+# KJV/ASV source data embeds translator footnotes and paragraph markers directly
+# in the verse text (e.g. "...still waters.23.2 still...: Heb. waters of quietness",
+# or a leading "¶" paragraph mark). Strip these so only the real verse text is shown.
+_FOOTNOTE_RE = re.compile(r'\d+\.\d+\s.*?:\s*Heb\.[^\d]*')
+_PILCROW_RE  = re.compile(r'¶\s*')
+
+
+def clean_verse_text(text: str) -> str:
+    if not text:
+        return text
+    text = _FOOTNOTE_RE.sub('', text)
+    text = _PILCROW_RE.sub('', text)
+    return text.strip()
 
 CDN_BASE = "https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles"
 
@@ -77,7 +92,7 @@ async def get_verse(version: str, book: str, chapter: int, verse: int) -> dict:
         "book": book,
         "chapter": chapter,
         "verse": verse,
-        "text": data.get("text", "").strip(),
+        "text": clean_verse_text(data.get("text", "")),
         "reference": f"{book} {chapter}:{verse}",
     }
 
@@ -110,12 +125,13 @@ async def get_chapter(version: str, book: str, chapter: int) -> dict:
 
     payload = r.json()
     verses = payload.get("data", [])
-    full_text = "\n".join(f"{v.get('verse')}. {v.get('text','').strip()}" for v in verses)
+    cleaned = [{"verse": v.get("verse"), "text": clean_verse_text(v.get("text", ""))} for v in verses]
+    full_text = "\n".join(f"{v['verse']}. {v['text']}" for v in cleaned)
     return {
         "version": version,
         "book": book,
         "chapter": chapter,
-        "verses": [{"verse": v.get("verse"), "text": v.get("text", "").strip()} for v in verses],
+        "verses": cleaned,
         "full_text": full_text,
         "reference": f"{book} {chapter}",
     }
