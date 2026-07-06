@@ -461,6 +461,7 @@ CREATE TABLE IF NOT EXISTS public.bible_reading_progress (
   UNIQUE(user_email, book, chapter)
 );
 CREATE INDEX IF NOT EXISTS idx_bible_reading_progress_user ON public.bible_reading_progress (user_email);
+NOTIFY pgrst, 'reload schema';
 """
         async with httpx.AsyncClient(timeout=20) as c:
             r2 = await c.post(
@@ -478,15 +479,30 @@ async def mark_bible_read(user_email: str, book: str, chapter: int, version: str
     """Upsert a reading-progress row for this user/book/chapter."""
     if not SUPABASE_URL or not SUPABASE_KEY:
         return False
-    await ensure_bible_reading_progress_table()
-    try:
+    just_created = not await ensure_bible_reading_progress_table()
+    import asyncio as _asyncio
+
+    async def _try_insert():
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.post(
+            return await c.post(
                 f"{SUPABASE_URL}/rest/v1/bible_reading_progress",
                 headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
                 json={"user_email": user_email, "book": book, "chapter": chapter, "version": version, "read_at": _now()},
             )
-        return r.status_code in (200, 201)
+
+    try:
+        r = await _try_insert()
+        if r.status_code in (200, 201):
+            return True
+        # Table was just created this call -- PostgREST schema cache may need a moment to catch up.
+        if just_created:
+            for delay in (0.6, 1.2, 2.0):
+                await _asyncio.sleep(delay)
+                r = await _try_insert()
+                if r.status_code in (200, 201):
+                    return True
+        logger.warning(f"mark_bible_read failed: {r.status_code} {r.text[:200]}")
+        return False
     except Exception as e:
         logger.warning(f"mark_bible_read: {e}")
         return False
