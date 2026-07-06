@@ -437,3 +437,75 @@ CREATE INDEX IF NOT EXISTS idx_saved_items_type       ON public.saved_items (typ
     except Exception as e:
         logger.warning(f"ensure_saved_items_table: {e}")
         return False
+
+async def ensure_bible_reading_progress_table() -> bool:
+    """Create bible_reading_progress table if it does not exist. Safe to call anytime."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/bible_reading_progress?limit=1",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return True
+        create_sql = """
+CREATE TABLE IF NOT EXISTS public.bible_reading_progress (
+  id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_email   TEXT        NOT NULL,
+  book         TEXT        NOT NULL,
+  chapter      INT         NOT NULL,
+  version      TEXT        NOT NULL DEFAULT 'NIV',
+  read_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_email, book, chapter)
+);
+CREATE INDEX IF NOT EXISTS idx_bible_reading_progress_user ON public.bible_reading_progress (user_email);
+"""
+        async with httpx.AsyncClient(timeout=20) as c:
+            r2 = await c.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
+                headers=_headers(),
+                json={"sql": create_sql},
+            )
+        return r2.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning(f"ensure_bible_reading_progress_table: {e}")
+        return False
+
+
+async def mark_bible_read(user_email: str, book: str, chapter: int, version: str = "NIV") -> bool:
+    """Upsert a reading-progress row for this user/book/chapter."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    await ensure_bible_reading_progress_table()
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.post(
+                f"{SUPABASE_URL}/rest/v1/bible_reading_progress",
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+                json={"user_email": user_email, "book": book, "chapter": chapter, "version": version, "read_at": _now()},
+            )
+        return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"mark_bible_read: {e}")
+        return False
+
+
+async def get_bible_reading_progress(user_email: str, limit: int = 500) -> list:
+    """Return all read chapters for this user (for showing checkmarks in the book nav)."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/bible_reading_progress?user_email=eq.{user_email}&order=read_at.desc&limit={limit}",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return r.json()
+        return []
+    except Exception as e:
+        logger.warning(f"get_bible_reading_progress: {e}")
+        return []
+

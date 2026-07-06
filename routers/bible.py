@@ -9,7 +9,7 @@ import os, httpx, base64
 from openai import OpenAI
 
 from bible_source import get_bible_versions, get_verse, get_chapter, resolve_version, BibleSourceError, ALLOWED_VERSIONS
-from pastor_db import save_bible_study
+from pastor_db import save_bible_study, mark_bible_read, get_bible_reading_progress
 
 router = APIRouter(prefix="/v1/bible", tags=["Bible"])
 
@@ -178,6 +178,35 @@ now explaining the Word. Warm, direct, biblical, never vague. Language: {req.lan
         "audio_error":   audio_error,
         "voice_provider": "elevenlabs" if audio_base64 else None,
     }
+
+class MarkReadRequest(BaseModel):
+    book:    str
+    chapter: int
+    version: Optional[str] = "NIV"
+    email:   Optional[str] = ""
+
+
+@router.post("/mark-read")
+async def mark_read(req: MarkReadRequest, request: Request):
+    """Record that the user finished reading a chapter. Auth only -- no AI usage/credits involved."""
+    from routers.pastor import _email_from_request
+    email = _email_from_request(request, req.email or "")
+    if not email:
+        raise HTTPException(status_code=401, detail={"success": False, "message": "Please log in to track your reading."})
+    ok = await mark_bible_read(email, req.book, req.chapter, req.version or "NIV")
+    return {"success": ok, "book": req.book, "chapter": req.chapter}
+
+
+@router.get("/reading-progress")
+async def reading_progress(request: Request, email: str = Query("")):
+    """List every chapter this user has marked as read."""
+    from routers.pastor import _email_from_request
+    resolved_email = _email_from_request(request, email or "")
+    if not resolved_email:
+        raise HTTPException(status_code=401, detail={"success": False, "message": "Please log in to view your reading progress."})
+    rows = await get_bible_reading_progress(resolved_email)
+    return {"success": True, "progress": rows}
+
 
 @router.get("/health")
 async def bible_health():
