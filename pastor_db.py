@@ -2,7 +2,7 @@
 services/pastor_db.py — Supabase save helpers for Pastor AI
 Auto-save every generation to Supabase (pastor_sermons, pastor_bible_studies, etc.)
 """
-import os, uuid, httpx, logging
+import os, uuid, httpx, logging, asyncio
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -438,6 +438,44 @@ CREATE INDEX IF NOT EXISTS idx_saved_items_type       ON public.saved_items (typ
         logger.warning(f"ensure_saved_items_table: {e}")
         return False
 
+_CREATE_BIBLE_READING_PROGRESS_SQL = """
+CREATE TABLE IF NOT EXISTS public.bible_reading_progress (
+  id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_email   TEXT        NOT NULL,
+  book         TEXT        NOT NULL,
+  chapter      INT         NOT NULL,
+  version      TEXT        NOT NULL DEFAULT 'NIV',
+  read_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_email, book, chapter)
+);
+CREATE INDEX IF NOT EXISTS idx_bible_reading_progress_user ON public.bible_reading_progress (user_email);
+"""
+
+
+def _create_table_via_direct_postgres(create_sql: str) -> bool:
+    """Run DDL directly against Postgres using DATABASE_URL. Bypasses PostgREST's
+    rpc/exec_sql entirely -- that RPC function doesn't exist in this project, so
+    the old approach silently failed (404) every time. This is sync/blocking;
+    callers should run it in a thread executor."""
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        logger.warning("_create_table_via_direct_postgres: DATABASE_URL not set")
+        return False
+    try:
+        import psycopg2
+        conn = psycopg2.connect(db_url, connect_timeout=10)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(create_sql)
+        cur.execute("NOTIFY pgrst, 'reload schema';")
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.warning(f"_create_table_via_direct_postgres failed: {e}")
+        return False
+
+
 async def ensure_bible_reading_progress_table() -> bool:
     """Create bible_reading_progress table if it does not exist. Safe to call anytime."""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -450,36 +488,25 @@ async def ensure_bible_reading_progress_table() -> bool:
             )
         if r.status_code == 200:
             return True
-        create_sql = """
-CREATE TABLE IF NOT EXISTS public.bible_reading_progress (
-  id           TEXT        PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  user_email   TEXT        NOT NULL,
-  book         TEXT        NOT NULL,
-  chapter      INT         NOT NULL,
-  version      TEXT        NOT NULL DEFAULT 'NIV',
-  read_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_email, book, chapter)
-);
-CREATE INDEX IF NOT EXISTS idx_bible_reading_progress_user ON public.bible_reading_progress (user_email);
-"""
+
+        # Primary path: direct Postgres connection (reliable, doesn't depend on
+        # a PostgREST rpc/exec_sql function existing).
+        loop = asyncio.get_event_loop()
+        created = await loop.run_in_executor(
+            None, _create_table_via_direct_postgres, _CREATE_BIBLE_READING_PROGRESS_SQL
+        )
+        if created:
+            return True
+
+        # Fallback: legacy rpc/exec_sql path, in case DATABASE_URL is ever missing.
         async with httpx.AsyncClient(timeout=20) as c:
             r2 = await c.post(
                 f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
                 headers=_headers(),
-                json={"sql": create_sql},
+                json={"sql": _CREATE_BIBLE_READING_PROGRESS_SQL},
             )
         if r2.status_code not in (200, 201, 204):
-            logger.warning(f"ensure_bible_reading_progress_table: exec_sql returned {r2.status_code}: {r2.text[:300]}")
-        # Explicit reload as its own separate RPC call (some exec_sql wrappers reject NOTIFY inline with DDL)
-        try:
-            async with httpx.AsyncClient(timeout=10) as c2:
-                await c2.post(
-                    f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
-                    headers=_headers(),
-                    json={"sql": "NOTIFY pgrst, 'reload schema';"},
-                )
-        except Exception:
-            pass
+            logger.warning(f"ensure_bible_reading_progress_table: exec_sql fallback returned {r2.status_code}: {r2.text[:300]}")
         return r2.status_code in (200, 201, 204)
     except Exception as e:
         logger.warning(f"ensure_bible_reading_progress_table: {e}")
