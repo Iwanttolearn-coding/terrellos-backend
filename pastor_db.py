@@ -496,7 +496,7 @@ async def mark_bible_read(user_email: str, book: str, chapter: int, version: str
             return True
         # Table was just created this call -- PostgREST schema cache may need a moment to catch up.
         if just_created:
-            for delay in (0.6, 1.2, 2.0):
+            for delay in (1.0, 2.0, 3.0, 4.0, 5.0):
                 await _asyncio.sleep(delay)
                 r = await _try_insert()
                 if r.status_code in (200, 201):
