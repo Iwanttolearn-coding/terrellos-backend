@@ -173,10 +173,13 @@ async def get_user_sermons(user_id: str, limit: int = 50) -> list:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(
-                f"{SUPABASE_URL}/rest/v1/pastor_sermons?user_id=eq.{user_id}&limit={limit}&order=created_at.desc",
+                f"{SUPABASE_URL}/rest/v1/pastor_sermons?user_id=eq.{user_id}&limit={limit}&order=generated_at.desc",
                 headers=_headers(),
             )
-        return r.json() if r.status_code == 200 else []
+        if r.status_code == 200:
+            return r.json()
+        logger.error("get sermons failed — status=%s body=%s", r.status_code, r.text[:300])
+        return []
     except Exception as e:
         logger.warning("get sermons error: %s", e)
         return []
@@ -189,10 +192,13 @@ async def get_user_bible_studies(user_id: str, limit: int = 50) -> list:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(
-                f"{SUPABASE_URL}/rest/v1/pastor_bible_studies?user_id=eq.{user_id}&limit={limit}&order=created_at.desc",
+                f"{SUPABASE_URL}/rest/v1/pastor_bible_studies?user_id=eq.{user_id}&limit={limit}&order=generated_at.desc",
                 headers=_headers(),
             )
-        return r.json() if r.status_code == 200 else []
+        if r.status_code == 200:
+            return r.json()
+        logger.error("get bible studies failed — status=%s body=%s", r.status_code, r.text[:300])
+        return []
     except Exception as e:
         logger.warning("get bible studies error: %s", e)
         return []
@@ -205,10 +211,13 @@ async def get_user_transcripts(user_id: str, limit: int = 50) -> list:
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(
-                f"{SUPABASE_URL}/rest/v1/pastor_transcripts?user_id=eq.{user_id}&limit={limit}&order=created_at.desc",
+                f"{SUPABASE_URL}/rest/v1/pastor_transcripts?user_id=eq.{user_id}&limit={limit}&order=id.desc",
                 headers=_headers(),
             )
-        return r.json() if r.status_code == 200 else []
+        if r.status_code == 200:
+            return r.json()
+        logger.error("get transcripts failed — status=%s body=%s", r.status_code, r.text[:300])
+        return []
     except Exception as e:
         logger.warning("get transcripts error: %s", e)
         return []
