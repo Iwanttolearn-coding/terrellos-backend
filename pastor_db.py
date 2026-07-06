@@ -461,7 +461,6 @@ CREATE TABLE IF NOT EXISTS public.bible_reading_progress (
   UNIQUE(user_email, book, chapter)
 );
 CREATE INDEX IF NOT EXISTS idx_bible_reading_progress_user ON public.bible_reading_progress (user_email);
-NOTIFY pgrst, 'reload schema';
 """
         async with httpx.AsyncClient(timeout=20) as c:
             r2 = await c.post(
@@ -469,6 +468,18 @@ NOTIFY pgrst, 'reload schema';
                 headers=_headers(),
                 json={"sql": create_sql},
             )
+        if r2.status_code not in (200, 201, 204):
+            logger.warning(f"ensure_bible_reading_progress_table: exec_sql returned {r2.status_code}: {r2.text[:300]}")
+        # Explicit reload as its own separate RPC call (some exec_sql wrappers reject NOTIFY inline with DDL)
+        try:
+            async with httpx.AsyncClient(timeout=10) as c2:
+                await c2.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
+                    headers=_headers(),
+                    json={"sql": "NOTIFY pgrst, 'reload schema';"},
+                )
+        except Exception:
+            pass
         return r2.status_code in (200, 201, 204)
     except Exception as e:
         logger.warning(f"ensure_bible_reading_progress_table: {e}")
