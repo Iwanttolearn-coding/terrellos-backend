@@ -109,14 +109,42 @@ async def register(payload: RegisterRequest):
 
 @router.post("/login")
 async def login(payload: LoginRequest):
+    """
+    SECURITY: Founder emails are granted the super_admin/elite override ONLY after a
+    real password check against the persistent app_users store — there is no
+    password-less bypass for any account, founder or otherwise. (Previously founder
+    logins skipped password verification entirely; that hole is closed as of 2026-07-07.)
+    """
     email = payload.email.lower().strip()
     is_founder = email in FOUNDER_EMAILS
 
+    if not user_store.configured():
+        raise HTTPException(503, "Account storage is not configured — please try again shortly")
+
+    try:
+        row = await user_store.get_user_by_email(email)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Account storage is temporarily unavailable — please try again shortly. ({e})")
+
+    if not row:
+        if is_founder:
+            # Founder account exists in config but has no password set up yet in the store —
+            # do NOT grant access; the founder must register a real password first.
+            raise HTTPException(status_code=401, detail="Founder account not yet provisioned with a password. Please register or contact support.")
+        raise HTTPException(status_code=401, detail="Email not found. Please register first.")
+
+    if not payload.password or not user_store.verify_password(payload.password, row.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+
+    if row.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="This account has been deactivated. Contact support for help.")
+
     if is_founder:
-        # Founder override remains a server-side hardcoded bypass (per standing instructions) —
-        # never gated on the password-store lookup.
+        # Password verified — now apply the founder override on top of the real identity check.
         token_data = {
             "email": email,
+            "user_id": row.get("id"),
+            "full_name": row.get("full_name") or "Terrell Millz",
             "role": "super_admin",
             "plan": "elite",
             "all_tools_access": True,
@@ -129,22 +157,6 @@ async def login(payload: LoginRequest):
             "user": {**token_data, "display_name": "Terrell Millz"},
             "message": "Founder access granted",
         }
-
-    if not user_store.configured():
-        raise HTTPException(503, "Account storage is not configured — please try again shortly")
-
-    try:
-        row = await user_store.get_user_by_email(email)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Account storage is temporarily unavailable — please try again shortly. ({e})")
-    if not row:
-        raise HTTPException(status_code=401, detail="Email not found. Please register first.")
-
-    if not payload.password or not user_store.verify_password(payload.password, row.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Incorrect email or password.")
-
-    if row.get("is_active") is False:
-        raise HTTPException(status_code=403, detail="This account has been deactivated. Contact support for help.")
 
     token_data = _token_data_from_row(row)
     token = create_token(token_data)
