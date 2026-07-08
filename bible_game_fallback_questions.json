@@ -1,0 +1,578 @@
+[
+  {
+    "type": "multiple_choice",
+    "question": "Who built the ark?",
+    "options": [
+      "Noah",
+      "Moses",
+      "Abraham",
+      "David"
+    ],
+    "correct_answer": "Noah",
+    "explanation": "Noah built the ark at God's command to save his family and the animals from the flood.",
+    "scripture_reference": "Genesis 6:14"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who led the Israelites out of Egypt?",
+    "options": [
+      "Joshua",
+      "Moses",
+      "Aaron",
+      "Joseph"
+    ],
+    "correct_answer": "Moses",
+    "explanation": "Moses led the Israelites out of Egyptian bondage after the ten plagues.",
+    "scripture_reference": "Exodus 12:51"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "How many days and nights did it rain during the flood?",
+    "options": [
+      "7",
+      "40",
+      "100",
+      "150"
+    ],
+    "correct_answer": "40",
+    "explanation": "It rained for forty days and forty nights.",
+    "scripture_reference": "Genesis 7:12"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was thrown into the lions' den?",
+    "options": [
+      "Daniel",
+      "Jonah",
+      "Joseph",
+      "Elijah"
+    ],
+    "correct_answer": "Daniel",
+    "explanation": "Daniel was thrown into the lions' den for praying to God despite the king's decree.",
+    "scripture_reference": "Daniel 6:16"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who defeated Goliath?",
+    "options": [
+      "Saul",
+      "David",
+      "Samson",
+      "Gideon"
+    ],
+    "correct_answer": "David",
+    "explanation": "The young shepherd David defeated the Philistine giant Goliath with a sling and stone.",
+    "scripture_reference": "1 Samuel 17:50"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "How many disciples did Jesus choose?",
+    "options": [
+      "10",
+      "12",
+      "7",
+      "14"
+    ],
+    "correct_answer": "12",
+    "explanation": "Jesus chose twelve apostles to follow and be trained by Him.",
+    "scripture_reference": "Matthew 10:1-4"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "In what city was Jesus born?",
+    "options": [
+      "Nazareth",
+      "Jerusalem",
+      "Bethlehem",
+      "Capernaum"
+    ],
+    "correct_answer": "Bethlehem",
+    "explanation": "Jesus was born in Bethlehem, fulfilling the prophecy of Micah 5:2.",
+    "scripture_reference": "Luke 2:4-7"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who betrayed Jesus for thirty pieces of silver?",
+    "options": [
+      "Peter",
+      "Thomas",
+      "Judas Iscariot",
+      "John"
+    ],
+    "correct_answer": "Judas Iscariot",
+    "explanation": "Judas Iscariot betrayed Jesus for thirty pieces of silver.",
+    "scripture_reference": "Matthew 26:15"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was swallowed by a great fish?",
+    "options": [
+      "Jonah",
+      "Jeremiah",
+      "Elijah",
+      "Ezekiel"
+    ],
+    "correct_answer": "Jonah",
+    "explanation": "Jonah was swallowed by a great fish after fleeing from God's call to Nineveh.",
+    "scripture_reference": "Jonah 1:17"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was the first man created by God?",
+    "options": [
+      "Adam",
+      "Cain",
+      "Abel",
+      "Seth"
+    ],
+    "correct_answer": "Adam",
+    "explanation": "God formed Adam from the dust of the ground.",
+    "scripture_reference": "Genesis 2:7"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was the first woman created by God?",
+    "options": [
+      "Sarah",
+      "Eve",
+      "Rebekah",
+      "Rachel"
+    ],
+    "correct_answer": "Eve",
+    "explanation": "God formed Eve from Adam's rib to be his helper.",
+    "scripture_reference": "Genesis 2:22"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "How many plagues did God send upon Egypt?",
+    "options": [
+      "7",
+      "10",
+      "12",
+      "3"
+    ],
+    "correct_answer": "10",
+    "explanation": "God sent ten plagues upon Egypt to persuade Pharaoh to release the Israelites.",
+    "scripture_reference": "Exodus 7-12"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who received the Ten Commandments on Mount Sinai?",
+    "options": [
+      "Aaron",
+      "Joshua",
+      "Moses",
+      "Caleb"
+    ],
+    "correct_answer": "Moses",
+    "explanation": "Moses received the Ten Commandments directly from God on Mount Sinai.",
+    "scripture_reference": "Exodus 20:1-17"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was known for his great strength and long hair?",
+    "options": [
+      "Samson",
+      "Saul",
+      "Boaz",
+      "Gideon"
+    ],
+    "correct_answer": "Samson",
+    "explanation": "Samson's strength was tied to his Nazarite vow, symbolized by his uncut hair.",
+    "scripture_reference": "Judges 16:17"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was sold into slavery by his brothers?",
+    "options": [
+      "Benjamin",
+      "Joseph",
+      "Reuben",
+      "Judah"
+    ],
+    "correct_answer": "Joseph",
+    "explanation": "Joseph was sold into slavery by his jealous brothers and taken to Egypt.",
+    "scripture_reference": "Genesis 37:28"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who was the wife of Abraham?",
+    "options": [
+      "Rebekah",
+      "Rachel",
+      "Sarah",
+      "Leah"
+    ],
+    "correct_answer": "Sarah",
+    "explanation": "Sarah was Abraham's wife and the mother of Isaac.",
+    "scripture_reference": "Genesis 17:15"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "What did Jesus turn water into at the wedding in Cana?",
+    "options": [
+      "Oil",
+      "Wine",
+      "Milk",
+      "Bread"
+    ],
+    "correct_answer": "Wine",
+    "explanation": "Jesus performed His first recorded miracle by turning water into wine.",
+    "scripture_reference": "John 2:9"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "How many loaves and fish did Jesus use to feed the 5,000?",
+    "options": [
+      "2 loaves, 5 fish",
+      "5 loaves, 2 fish",
+      "7 loaves, 3 fish",
+      "3 loaves, 7 fish"
+    ],
+    "correct_answer": "5 loaves, 2 fish",
+    "explanation": "Jesus multiplied five loaves and two fish to feed over five thousand people.",
+    "scripture_reference": "Matthew 14:17-21"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who denied Jesus three times before the rooster crowed?",
+    "options": [
+      "John",
+      "Peter",
+      "Andrew",
+      "James"
+    ],
+    "correct_answer": "Peter",
+    "explanation": "Peter denied knowing Jesus three times, just as Jesus had predicted.",
+    "scripture_reference": "Matthew 26:74-75"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "On what day did Jesus rise from the dead?",
+    "options": [
+      "The Sabbath",
+      "The third day",
+      "The seventh day",
+      "The first day of the following week only"
+    ],
+    "correct_answer": "The third day",
+    "explanation": "Jesus rose on the third day, just as He had foretold.",
+    "scripture_reference": "1 Corinthians 15:4"
+  },
+  {
+    "type": "true_false",
+    "question": "Moses parted the Red Sea so the Israelites could cross on dry ground.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "God parted the Red Sea through Moses so Israel could escape Pharaoh's army.",
+    "scripture_reference": "Exodus 14:21-22"
+  },
+  {
+    "type": "true_false",
+    "question": "Jesus had thirteen disciples.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "False",
+    "explanation": "Jesus chose twelve disciples, not thirteen.",
+    "scripture_reference": "Matthew 10:1-4"
+  },
+  {
+    "type": "true_false",
+    "question": "Solomon was known for his great wisdom.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "God granted Solomon exceptional wisdom after he asked for it rather than riches.",
+    "scripture_reference": "1 Kings 3:12"
+  },
+  {
+    "type": "true_false",
+    "question": "The book of Genesis is the last book of the Old Testament.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "False",
+    "explanation": "Genesis is the first book of the Bible; Malachi is the last book of the Old Testament.",
+    "scripture_reference": "Genesis 1:1"
+  },
+  {
+    "type": "true_false",
+    "question": "Ruth was a Moabite woman who became King David's great-grandmother.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Ruth, a Moabite, married Boaz and became an ancestor of David.",
+    "scripture_reference": "Ruth 4:17"
+  },
+  {
+    "type": "true_false",
+    "question": "John the Baptist baptized Jesus in the Jordan River.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "John baptized Jesus in the Jordan River, and the Spirit descended like a dove.",
+    "scripture_reference": "Matthew 3:13-17"
+  },
+  {
+    "type": "true_false",
+    "question": "Paul was originally named Saul before his conversion.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Saul of Tarsus, a persecutor of Christians, was renamed Paul after his conversion.",
+    "scripture_reference": "Acts 13:9"
+  },
+  {
+    "type": "true_false",
+    "question": "The Tower of Babel was built to reach the moon.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "False",
+    "explanation": "The Tower of Babel was built to reach the heavens and make a name for the builders, not to reach the moon.",
+    "scripture_reference": "Genesis 11:4"
+  },
+  {
+    "type": "true_false",
+    "question": "Esther became queen of Persia and saved her people from destruction.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Esther risked her life to save the Jewish people from Haman's plot.",
+    "scripture_reference": "Esther 7:3-4"
+  },
+  {
+    "type": "true_false",
+    "question": "Lazarus was raised from the dead by Jesus after four days in the tomb.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Jesus raised Lazarus after he had been dead four days, demonstrating His power over death.",
+    "scripture_reference": "John 11:39-44"
+  },
+  {
+    "type": "true_false",
+    "question": "The Israelites wandered in the wilderness for 40 years.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Due to their unbelief, Israel wandered the wilderness for forty years before entering the Promised Land.",
+    "scripture_reference": "Numbers 14:33-34"
+  },
+  {
+    "type": "true_false",
+    "question": "Elijah was taken up to heaven in a chariot of fire.",
+    "options": [
+      "True",
+      "False"
+    ],
+    "correct_answer": "True",
+    "explanation": "Elijah was taken up by a whirlwind with a chariot and horses of fire.",
+    "scripture_reference": "2 Kings 2:11"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "For God so loved the world, that he gave his only begotten _____, that whosoever believeth in him should not perish, but have everlasting life.",
+    "options": [],
+    "correct_answer": "Son",
+    "explanation": "This is one of the most quoted verses in Scripture, John 3:16.",
+    "scripture_reference": "John 3:16"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "The Lord is my _____; I shall not want.",
+    "options": [],
+    "correct_answer": "shepherd",
+    "explanation": "This opens the beloved 23rd Psalm.",
+    "scripture_reference": "Psalm 23:1"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "In the beginning God created the heaven and the _____.",
+    "options": [],
+    "correct_answer": "earth",
+    "explanation": "This is the opening verse of the entire Bible.",
+    "scripture_reference": "Genesis 1:1"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "I can do all things through Christ which _____ me.",
+    "options": [],
+    "correct_answer": "strengtheneth",
+    "explanation": "Paul wrote this while encouraging contentment in Christ's strength.",
+    "scripture_reference": "Philippians 4:13"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "Trust in the Lord with all thine heart; and lean not unto thine own _____.",
+    "options": [],
+    "correct_answer": "understanding",
+    "explanation": "This proverb calls believers to full trust in God rather than self-reliance.",
+    "scripture_reference": "Proverbs 3:5"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "But they that wait upon the Lord shall renew their _____; they shall mount up with wings as eagles.",
+    "options": [],
+    "correct_answer": "strength",
+    "explanation": "Isaiah encourages the weary that God renews strength for those who wait on Him.",
+    "scripture_reference": "Isaiah 40:31"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "And we know that all things work together for good to them that love _____.",
+    "options": [],
+    "correct_answer": "God",
+    "explanation": "Paul assures believers that God works all things for good for those who love Him.",
+    "scripture_reference": "Romans 8:28"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "Ask, and it shall be given you; seek, and ye shall _____; knock, and it shall be opened unto you.",
+    "options": [],
+    "correct_answer": "find",
+    "explanation": "Jesus teaches persistent, faithful prayer in the Sermon on the Mount.",
+    "scripture_reference": "Matthew 7:7"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "Thy word is a lamp unto my feet, and a _____ unto my path.",
+    "options": [],
+    "correct_answer": "light",
+    "explanation": "This verse from Psalm 119 describes Scripture as guidance for daily life.",
+    "scripture_reference": "Psalm 119:105"
+  },
+  {
+    "type": "fill_in_blank",
+    "question": "Be still, and know that I am _____.",
+    "options": [],
+    "correct_answer": "God",
+    "explanation": "This Psalm calls believers to quiet trust in God's sovereignty.",
+    "scripture_reference": "Psalm 46:10"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"Let there be light: and there was light.\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "Genesis 1",
+      "Exodus 3",
+      "Psalm 33",
+      "John 1"
+    ],
+    "correct_answer": "Genesis 1",
+    "explanation": "This is God's first spoken command in creation.",
+    "scripture_reference": "Genesis 1:3"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"The Lord is my shepherd; I shall not want.\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "Psalm 23",
+      "Proverbs 3",
+      "Isaiah 40",
+      "Psalm 91"
+    ],
+    "correct_answer": "Psalm 23",
+    "explanation": "This is the opening line of the well-loved 23rd Psalm.",
+    "scripture_reference": "Psalm 23:1"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"For God so loved the world...\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "Romans 5",
+      "John 3",
+      "1 John 4",
+      "Ephesians 2"
+    ],
+    "correct_answer": "John 3",
+    "explanation": "This is arguably the most famous verse in the New Testament, John 3:16.",
+    "scripture_reference": "John 3:16"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"Love is patient, love is kind...\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "1 Corinthians 13",
+      "Galatians 5",
+      "Colossians 3",
+      "1 John 4"
+    ],
+    "correct_answer": "1 Corinthians 13",
+    "explanation": "This is Paul's famous discourse on love, often read at weddings.",
+    "scripture_reference": "1 Corinthians 13:4"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"I am the way, the truth, and the life.\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "John 14",
+      "Matthew 5",
+      "Luke 15",
+      "John 1"
+    ],
+    "correct_answer": "John 14",
+    "explanation": "Jesus declares this to His disciples before His crucifixion.",
+    "scripture_reference": "John 14:6"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"The wages of sin is death; but the gift of God is eternal life.\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "Romans 6",
+      "Romans 3",
+      "Ephesians 2",
+      "James 1"
+    ],
+    "correct_answer": "Romans 6",
+    "explanation": "Paul contrasts the consequence of sin with the free gift of salvation.",
+    "scripture_reference": "Romans 6:23"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"Blessed are the poor in spirit: for theirs is the kingdom of heaven.\" \u2014 Which book and chapter is this from?",
+    "options": [
+      "Matthew 5",
+      "Luke 6",
+      "Mark 10",
+      "John 6"
+    ],
+    "correct_answer": "Matthew 5",
+    "explanation": "This opens the Beatitudes in the Sermon on the Mount.",
+    "scripture_reference": "Matthew 5:3"
+  },
+  {
+    "type": "scripture_reference",
+    "question": "\"I know the plans I have for you...to give you a future and a hope.\" (paraphrase) \u2014 Which book and chapter is this from?",
+    "options": [
+      "Jeremiah 29",
+      "Isaiah 55",
+      "Proverbs 16",
+      "Psalm 139"
+    ],
+    "correct_answer": "Jeremiah 29",
+    "explanation": "God speaks this promise to the exiled Israelites through the prophet Jeremiah.",
+    "scripture_reference": "Jeremiah 29:11"
+  }
+]

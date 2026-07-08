@@ -6,7 +6,17 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from openai import OpenAI
-import os, json
+import os, json, logging
+
+def _load_fallback_game_questions():
+    _path = os.path.join(os.path.dirname(__file__), "..", "bible_game_fallback_questions.json")
+    try:
+        with open(_path) as _f:
+            return json.load(_f)
+    except Exception:
+        return []
+
+FALLBACK_GAME_QUESTIONS = _load_fallback_game_questions()
 
 from pastor_db import save_sermon, save_bible_study, save_transcript, save_generated_content, get_user_sermons, get_user_bible_studies, get_user_transcripts, delete_item
 from routers.usage_logger import log_usage
@@ -1273,6 +1283,32 @@ Make every question different — no repeats, no near-duplicates. Vary difficult
             "scripture_reference": q.get("scripture_reference", ""),
         })
 
+    used_fallback = False
+    if not questions:
+        # Both AI providers failed to produce usable questions — serve from the
+        # curated static fallback bank instead of erroring out on the user.
+        import random as _random_fb
+        pool = [q for q in FALLBACK_GAME_QUESTIONS if (not types) or q.get("type") in types]
+        if not pool:
+            pool = FALLBACK_GAME_QUESTIONS
+        if pool:
+            sample_size = min(count, len(pool))
+            chosen = _random_fb.sample(pool, sample_size)
+            questions = [
+                {
+                    "id": i + 1,
+                    "type": q.get("type", "multiple_choice"),
+                    "question": q.get("question", ""),
+                    "options": q.get("options") or (["True", "False"] if q.get("type") == "true_false" else []),
+                    "correct_answer": q.get("correct_answer", ""),
+                    "explanation": q.get("explanation", ""),
+                    "scripture_reference": q.get("scripture_reference", ""),
+                }
+                for i, q in enumerate(chosen)
+            ]
+            used_fallback = True
+            logging.warning("[bible-game] AI generation failed for subject=%r — served %d fallback questions", subject, len(questions))
+
     if not questions:
         raise HTTPException(status_code=502, detail="Question generation failed — please try again.")
 
@@ -1303,6 +1339,7 @@ Make every question different — no repeats, no near-duplicates. Vary difficult
         "save_error": save_error,
         "count": len(questions),
         "questions": questions,
+        "used_fallback": used_fallback,
     }
 
 
