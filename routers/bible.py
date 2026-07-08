@@ -277,6 +277,48 @@ async def bible_chapter(
         raise HTTPException(status_code=500, detail={"success": False, "error_type": "server_error", "message": str(e)})
 
 
+@router.get("/parallel")
+async def bible_parallel(
+    book: str = Query(..., description="e.g. John, Genesis, 1 Corinthians"),
+    chapter: int = Query(...),
+    primary: str = Query("en-kjv", description="Left column version — defaults to KJV"),
+    secondary: str = Query("es-bes", description="Right column version — defaults to the Spanish public-domain text"),
+):
+    """
+    Parallel-reading view: fetches the same chapter in two real, public-domain
+    versions side by side (default English KJV + Spanish 'La Biblia en Español
+    Sencillo'), aligned by verse number. Both texts are real retrieved scripture —
+    nothing here is AI-translated or AI-generated, per platform policy.
+    """
+    try:
+        left = await get_chapter(primary, book, chapter)
+        right = await get_chapter(secondary, book, chapter)
+    except BibleSourceError as e:
+        _bible_source_error_to_http(e)
+        return
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"success": False, "error_type": "server_error", "message": str(e)})
+
+    right_by_verse = {str(v["verse"]): v["text"] for v in right["verses"]}
+    aligned = [
+        {
+            "verse": v["verse"],
+            "primary_text": v["text"],
+            "secondary_text": right_by_verse.get(str(v["verse"]), ""),
+        }
+        for v in left["verses"]
+    ]
+    return {
+        "success": True,
+        "book": book,
+        "chapter": chapter,
+        "primary_version": primary,
+        "secondary_version": secondary,
+        "verses": aligned,
+        "reference": left["reference"],
+    }
+
+
 class BibleTeachRequest(BaseModel):
     reference:   str            # e.g. "John 1" or "Genesis 1:1"
     text:        str            # the REAL retrieved scripture text — grounds the AI, no guessing

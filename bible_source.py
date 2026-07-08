@@ -25,6 +25,7 @@ DEFERRED_VERSIONS for the list and reasons.
 import httpx
 import logging
 import re
+from urllib.parse import quote as _urlquote
 from typing import Optional
 
 logger = logging.getLogger("bible_source")
@@ -70,6 +71,13 @@ ALLOWED_VERSIONS = {
     "en-bbe":       "Bible in Basic English (1949, public domain)",
     "en-darby":     "Darby Bible (1890, public domain)",
     "en-ylt":       "Young's Literal Translation (1898, public domain — New Testament only)",
+    # Spanish — verified clean (2026-07-08): no footnote-splicing across Genesis,
+    # John, Ephesians, Romans, Hebrews, Revelation, Psalms. Same eBible.org public
+    # domain archive (archivist Kahunapule Michael Johnson) as several of our
+    # already-approved English versions above. Used for the English/Spanish
+    # parallel reading view, always paired with en-kjv (never a stand-alone
+    # substitute for an AI translation of KJV).
+    "es-bes":       "La Biblia en Español Sencillo (public domain, Spanish)",
 }
 
 # Real CDN bible id casing/values differ slightly from our public ids in one case
@@ -113,6 +121,34 @@ VERSION_SCOPE = {
     "en-ojps": "Old Testament only",
     "en-oke":  "Torah only (Genesis–Deuteronomy)",
     "en-ylt":  "New Testament only",
+}
+
+# es-bes book folders are named in Spanish, not English — full map required
+# (normalize_book() only handles English book names). Keyed by the same
+# normalized English slug normalize_book() produces (lowercase, no punctuation).
+ES_BES_BOOK_SLUGS = {
+    "genesis": "génesis", "exodus": "éxodo", "leviticus": "levítico",
+    "numbers": "números", "deuteronomy": "deuteronomio", "joshua": "josué",
+    "judges": "jueces", "ruth": "rut", "1samuel": "1samuel", "2samuel": "2samuel",
+    "1kings": "1reyes", "2kings": "2reyes", "1chronicles": "1crónicas",
+    "2chronicles": "2crónicas", "ezra": "esdras", "nehemiah": "nehemías",
+    "esther": "ester", "job": "job", "psalms": "salmos", "psalm": "salmos",
+    "proverbs": "proverbios", "ecclesiastes": "eclesiastés",
+    "songofsolomon": "cantares", "songofsongs": "cantares", "isaiah": "isaías",
+    "jeremiah": "jeremías", "lamentations": "lamentaciones", "ezekiel": "ezequiel",
+    "daniel": "daniel", "hosea": "oseas", "joel": "joel", "amos": "amós",
+    "obadiah": "abdías", "jonah": "jonás", "micah": "miqueas", "nahum": "nahum",
+    "habakkuk": "habacuc", "zephaniah": "sofonías", "haggai": "hageo",
+    "zechariah": "zacarías", "malachi": "malaquías", "matthew": "mateo",
+    "mark": "marcos", "luke": "lucas", "john": "juan", "acts": "hechos",
+    "romans": "romanos", "1corinthians": "1corintios", "2corinthians": "2corintios",
+    "galatians": "gálatas", "ephesians": "efesios", "philippians": "filipenses",
+    "colossians": "colosenses", "1thessalonians": "1tesalonicenses",
+    "2thessalonians": "2tesalonicenses", "1timothy": "1timoteo",
+    "2timothy": "2timoteo", "titus": "tito", "philemon": "filemón",
+    "hebrews": "hebreos", "james": "santiago", "1peter": "1pedro",
+    "2peter": "2pedro", "1john": "1juan", "2john": "2juan", "3john": "3juan",
+    "jude": "judas", "revelation": "apocalipsis", "revelations": "apocalipsis",
 }
 
 
@@ -238,6 +274,19 @@ def normalize_book(book: str, version: str = "") -> str:
     return overrides.get(slug, slug)
 
 
+def _cdn_book_path(book: str, version: str) -> str:
+    """Return the URL-safe book path segment for a given version's CDN folder.
+    es-bes uses full Spanish book names (with accents) instead of English slugs —
+    everything else uses normalize_book() as before."""
+    if version == "es-bes":
+        eng_slug = "".join(ch for ch in (book or "").lower() if ch.isalnum())
+        es_name = ES_BES_BOOK_SLUGS.get(eng_slug)
+        if not es_name:
+            raise BibleSourceError("invalid_book", f"Couldn't find the book '{book}' in the Spanish text.")
+        return _urlquote(es_name)
+    return normalize_book(book, version)
+
+
 def _cdn_version_id(version: str) -> str:
     return _CDN_VERSION_ID.get(version, version)
 
@@ -263,7 +312,7 @@ async def get_verse(version: str, book: str, chapter: int, verse: int) -> dict:
     _check_version(version)
     if version in BIBLE_API_COM_VERSIONS:
         return await _fetch_bible_api_com_verse(version, book, chapter, verse)
-    slug = normalize_book(book, version)
+    slug = _cdn_book_path(book, version)
     cdn_id = _cdn_version_id(version)
     url = f"{CDN_BASE}/{cdn_id}/books/{slug}/chapters/{chapter}/verses/{verse}.json"
     try:
@@ -295,7 +344,7 @@ async def get_chapter(version: str, book: str, chapter: int) -> dict:
     _check_version(version)
     if version in BIBLE_API_COM_VERSIONS:
         return await _fetch_bible_api_com_chapter(version, book, chapter)
-    slug = normalize_book(book, version)
+    slug = _cdn_book_path(book, version)
     cdn_id = _cdn_version_id(version)
     url = f"{CDN_BASE}/{cdn_id}/books/{slug}/chapters/{chapter}.json"
     try:
