@@ -45,6 +45,38 @@ class UpdateUserRequest(BaseModel):
     is_active: Optional[bool] = None
 
 
+@router.get("/ai-provider-health")
+async def ai_provider_health(request: Request, _admin=Depends(require_super_admin)):
+    """
+    Zero-cost diagnostic: verifies the ai_provider module is import-clean and
+    exposes chat_complete() as a callable, and reports which provider API keys
+    are configured. Does NOT make any real OpenAI/Perplexity API call (no cost).
+    This is the exact class of check that would have caught the 2026-07-08
+    ai_provider.generate/chat_complete name-mismatch regression immediately.
+    """
+    try:
+        import ai_provider
+        chat_complete_ok = callable(getattr(ai_provider, "chat_complete", None))
+        import_error = None
+    except Exception as e:
+        chat_complete_ok = False
+        import_error = str(e)
+
+    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    perplexity_configured = bool(os.getenv("PERPLEXITY_API_KEY"))
+    healthy = chat_complete_ok and (openai_configured or perplexity_configured) and import_error is None
+
+    return {
+        "success": True,
+        "healthy": healthy,
+        "chat_complete_available": chat_complete_ok,
+        "openai_configured": openai_configured,
+        "perplexity_configured": perplexity_configured,
+        "import_error": import_error,
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/stats")
 async def admin_stats():
     usage = get_stats()
