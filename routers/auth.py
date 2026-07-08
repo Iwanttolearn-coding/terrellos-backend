@@ -282,22 +282,6 @@ async def get_profile(request: Request):
     }
 
 
-@router.post("/founder-bypass")
-async def founder_bypass(payload: LoginRequest):
-    email = payload.email.lower().strip()
-    if email not in FOUNDER_EMAILS:
-        raise HTTPException(status_code=403, detail="Not a founder email")
-    token_data = {
-        "email": email,
-        "display_name": "Terrell Millz",
-        "role": "super_admin",
-        "plan": "elite",
-        "all_tools_access": True,
-        "is_founder": True,
-    }
-    token = create_token(token_data)
-    return {"success": True, "token": token, "access_token": token, "user": token_data}
-
 @router.get("/health")
 async def auth_health():
     return {"success": True, "status": "online", "service": "Auth",
