@@ -523,7 +523,7 @@ async def mark_bible_read(user_email: str, book: str, chapter: int, version: str
     async def _try_insert():
         async with httpx.AsyncClient(timeout=10) as c:
             return await c.post(
-                f"{SUPABASE_URL}/rest/v1/bible_reading_progress",
+                f"{SUPABASE_URL}/rest/v1/bible_reading_progress?on_conflict=user_email,book,chapter",
                 headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
                 json={"user_email": user_email, "book": book, "chapter": chapter, "version": version, "read_at": _now()},
             )
