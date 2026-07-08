@@ -1,15 +1,15 @@
 """
 ai_provider.py — Shared AI generation helper with automatic fallback.
 
-Tries OpenAI first (primary, higher quality for gpt-4o). If OpenAI fails for
-ANY reason (billing/quota, rate limit, outage), automatically retries the same
-prompt against Perplexity's OpenAI-compatible chat completions API so
-ministry-facing features (Word Study, Bible Teaching, Devotionals) stay online
-instead of surfacing a 500 to the user.
+Tries OpenAI first (primary). If OpenAI fails for ANY reason (billing/quota,
+rate limit, outage), automatically retries the same prompt against
+Perplexity's OpenAI-compatible chat completions API so ministry-facing
+features (Word Study, Bible Teaching, Devotionals) stay online instead of
+surfacing a 500 to the user.
 
 Usage:
-    from ai_provider import generate
-    content = generate(system="...", prompt="...", max_tokens=2500, temperature=0.5)
+    from ai_provider import chat_complete
+    content = chat_complete(system="...", user_prompt="...", max_tokens=2500, temperature=0.5, model="gpt-4o")
 """
 import os
 import logging
@@ -31,8 +31,8 @@ _perplexity_client = (
 PERPLEXITY_MODEL = "sonar-pro"
 
 
-def generate(system: str, prompt: str, max_tokens: int = 3000, temperature: float = 0.5,
-             model: str = "gpt-4o") -> str:
+def chat_complete(system: str, user_prompt: str, max_tokens: int = 3000, temperature: float = 0.5,
+                   model: str = "gpt-4o") -> str:
     """
     Generate text using OpenAI first; automatically falls back to Perplexity
     if OpenAI fails for any reason. Raises RuntimeError only if BOTH providers
@@ -46,7 +46,7 @@ def generate(system: str, prompt: str, max_tokens: int = 3000, temperature: floa
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -62,7 +62,7 @@ def generate(system: str, prompt: str, max_tokens: int = 3000, temperature: floa
                 model=PERPLEXITY_MODEL,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 max_tokens=max_tokens,
                 temperature=temperature,
