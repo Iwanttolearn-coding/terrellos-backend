@@ -97,19 +97,18 @@ VOICE:
 - If someone is hurting, lead with compassion first. Then truth."""
 
 def ai(prompt: str, max_tokens: int = 4000, model: str = "gpt-4o", system_extra: str = "", temperature: float = 0.75) -> str:
-    if not client:
-        return "OpenAI not configured. Please add OPENAI_API_KEY to backend secrets."
+    from ai_provider import chat_complete
     system = PASTOR_SYSTEM + (("\n\n" + system_extra) if system_extra else "")
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": prompt}
-        ],
-        max_tokens=max_tokens,
-        temperature=0.75,
-    )
-    return resp.choices[0].message.content.strip()
+    try:
+        return chat_complete(
+            system=system,
+            user_prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            model=model,
+        )
+    except Exception as e:
+        return f"Content generation is temporarily unavailable ({e}). Please try again shortly."
 
 # ── Request models ────────────────────────────────────────────────────────────
 

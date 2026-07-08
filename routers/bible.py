@@ -314,15 +314,16 @@ Write a complete, church-ready teaching on this passage for a {req.audience} aud
 Do not invent scripture wording beyond what was given — quote it exactly when referencing it."""
 
     try:
-        resp = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": PASTOR_SYSTEM}, {"role": "user", "content": prompt}],
+        from ai_provider import chat_complete
+        content = chat_complete(
+            system=PASTOR_SYSTEM,
+            user_prompt=prompt,
             max_tokens=3000,
             temperature=0.65,
+            model="gpt-4o",
         )
-        content = resp.choices[0].message.content.strip()
-    except Exception:
-        raise HTTPException(status_code=500, detail={"success": False, "message": "Teaching generation failed. Please try again."})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"success": False, "message": f"Teaching generation failed: {e}"})
 
     uid = _email_from_request(request, req.email or "")
     saved_id = await save_bible_study(

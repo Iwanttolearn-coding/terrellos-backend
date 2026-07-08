@@ -58,18 +58,17 @@ class PassageWordStudyRequest(BaseModel):
 
 
 def ai(prompt: str, max_tokens: int = 3000) -> str:
-    if not client:
-        raise HTTPException(503, "OpenAI not configured")
-    resp = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": WORD_STUDY_SYSTEM},
-            {"role": "user",   "content": prompt},
-        ],
-        max_tokens=max_tokens,
-        temperature=0.3,   # Lower temp for scholarly accuracy
-    )
-    return resp.choices[0].message.content.strip()
+    from ai_provider import chat_complete
+    try:
+        return chat_complete(
+            system=WORD_STUDY_SYSTEM,
+            user_prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=0.3,   # Lower temp for scholarly accuracy
+            model="gpt-4o",
+        )
+    except Exception as e:
+        raise HTTPException(503, f"AI generation unavailable: {e}")
 
 
 def build_word_study_prompt(req: WordStudyRequest) -> str:
