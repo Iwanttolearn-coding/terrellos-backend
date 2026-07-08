@@ -563,3 +563,144 @@ async def get_bible_reading_progress(user_email: str, limit: int = 500) -> list:
         logger.warning(f"get_bible_reading_progress: {e}")
         return []
 
+
+_CREATE_MUSIC_SONGS_SQL = """
+CREATE TABLE IF NOT EXISTS public.music_songs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT 'Untitled Song',
+    song_text TEXT NOT NULL,
+    style TEXT DEFAULT '',
+    style_label TEXT DEFAULT '',
+    song_key TEXT DEFAULT '',
+    mood TEXT DEFAULT '',
+    theme TEXT DEFAULT '',
+    tempo TEXT DEFAULT '',
+    songwriter_ref TEXT DEFAULT '',
+    is_saved BOOLEAN DEFAULT false,
+    generated_at TIMESTAMPTZ DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_music_songs_user ON public.music_songs (user_id);
+"""
+
+
+async def ensure_music_songs_table() -> bool:
+    """Create music_songs table if it doesn't exist. Same proven direct-Postgres
+    approach as ensure_bible_reading_progress_table (the rpc/exec_sql function
+    does not exist in this project, so that path is only kept as a last-resort
+    fallback). Safe to call on every startup."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/music_songs?limit=1",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return True  # Table exists
+
+        loop = asyncio.get_event_loop()
+        created = await loop.run_in_executor(
+            None, _create_table_via_direct_postgres, _CREATE_MUSIC_SONGS_SQL
+        )
+        if created:
+            return True
+
+        # Fallback: legacy rpc/exec_sql path, in case DATABASE_URL is ever missing.
+        async with httpx.AsyncClient(timeout=20) as c:
+            r2 = await c.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
+                headers=_headers(),
+                json={"query": _CREATE_MUSIC_SONGS_SQL},
+            )
+        logger.info("music_songs table create attempt (fallback): %s", r2.status_code)
+        return r2.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning("ensure_music_songs_table error: %s", e)
+        return False
+
+
+async def save_music_song(
+    user_id: str,
+    title: str,
+    song_text: str,
+    style: str = "",
+    style_label: str = "",
+    song_key: str = "",
+    mood: str = "",
+    theme: str = "",
+    tempo: str = "",
+    songwriter_ref: str = "",
+    is_saved: bool = False,
+) -> Optional[str]:
+    """Save a generated song. Every generation is logged (is_saved=false); the
+    'Save to Music Vault' button flips is_saved=true on the same row. Returns
+    saved record ID or None."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    try:
+        data = {
+            "user_id": user_id,
+            "title": title,
+            "song_text": song_text,
+            "style": style,
+            "style_label": style_label,
+            "song_key": song_key,
+            "mood": mood,
+            "theme": theme,
+            "tempo": tempo,
+            "songwriter_ref": songwriter_ref,
+            "is_saved": is_saved,
+            "generated_at": _now(),
+        }
+        status, result = await _post_with_retry(f"{SUPABASE_URL}/rest/v1/music_songs", data)
+        if status in (200, 201):
+            saved_id = result[0]["id"] if result else None
+            logger.info("✅ music song saved: %s", saved_id)
+            return saved_id
+        else:
+            logger.error("music song save failed after retry — status=%s detail=%s", status, result)
+            return None
+    except Exception as e:
+        logger.error("music song save error: %s", e)
+        return None
+
+
+async def mark_music_song_saved(song_id: str, user_id: str) -> bool:
+    """Flip is_saved=true on a song row (the 'Save to Music Vault' action)."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.patch(
+                f"{SUPABASE_URL}/rest/v1/music_songs?id=eq.{song_id}&user_id=eq.{user_id}",
+                headers=_headers(),
+                json={"is_saved": True},
+            )
+        return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning("mark_music_song_saved error: %s", e)
+        return False
+
+
+async def get_user_music_songs(user_id: str, saved_only: bool = True, limit: int = 50) -> list:
+    """Fetch songs for a user. saved_only=True (default) returns only songs the
+    user explicitly saved to their Music Vault, matching the Content Vault pattern."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
+    try:
+        filter_clause = "&is_saved=eq.true" if saved_only else ""
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/music_songs?user_id=eq.{user_id}{filter_clause}&limit={limit}&order=generated_at.desc",
+                headers=_headers(),
+            )
+        if r.status_code == 200:
+            return r.json()
+        logger.error("get music songs failed — status=%s body=%s", r.status_code, r.text[:300])
+        return []
+    except Exception as e:
+        logger.warning("get music songs error: %s", e)
+        return []

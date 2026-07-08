@@ -42,6 +42,7 @@ from routers.subscriptions import router as subscriptions_router
 from routers.transcribe    import router as transcribe_router
 from routers.legacy        import router as legacy_router
 from routers.legion        import router as legion_router
+from routers.music         import router as music_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -267,6 +268,7 @@ app.include_router(subscriptions_router)
 app.include_router(transcribe_router)
 app.include_router(legacy_router)
 app.include_router(legion_router)
+app.include_router(music_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
@@ -315,6 +317,16 @@ async def _ensure_pastor_tables():
             print("[startup] ⚠️  saved_items table check failed — may need manual creation")
     except Exception as e:
         print(f"[startup] saved_items table error: {e}")
+
+    try:
+        from pastor_db import ensure_music_songs_table
+        result3 = await ensure_music_songs_table()
+        if result3:
+            print("[startup] ✅ music_songs table ready")
+        else:
+            print("[startup] ⚠️  music_songs table check failed — may need manual creation")
+    except Exception as e:
+        print(f"[startup] music_songs table error: {e}")
 
 @app.get("/health")
 async def health(request: Request):
