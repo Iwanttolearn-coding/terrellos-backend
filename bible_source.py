@@ -62,6 +62,14 @@ ALLOWED_VERSIONS = {
     "en-rv":        "Revised Version (1885, public domain)",
     "en-ojps":      "Old JPS TaNaKH (1917, public domain, Jewish translation — Old Testament only)",
     "en-oke":       "Targum Onkelos, Etheridge translation (public domain — Torah/Genesis-Deuteronomy only)",
+    # Sourced from bible-api.com's parameterized data API (clean, footnote-free —
+    # see BIBLE_API_COM_VERSIONS below) rather than the wldeh CDN, which embeds
+    # unreliable inline footnotes for these specific versions.
+    "en-web":       "World English Bible (public domain)",
+    "en-webbe":     "World English Bible, British Edition (public domain)",
+    "en-bbe":       "Bible in Basic English (1949, public domain)",
+    "en-darby":     "Darby Bible (1890, public domain)",
+    "en-ylt":       "Young's Literal Translation (1898, public domain — New Testament only)",
 }
 
 # Real CDN bible id casing/values differ slightly from our public ids in one case
@@ -73,11 +81,14 @@ _CDN_VERSION_ID = {
 # Versions intentionally NOT enabled yet, and why — kept here so this isn't
 # silently forgotten and someone re-discovers the same footnote bugs later.
 DEFERRED_VERSIONS = {
-    "en-web / en-webus / en-webbe": "World English Bible family — public domain, but footnotes are spliced "
-        "inline with no reliable terminator in some verses (confirmed destructive strip risk on John 1:23, "
-        "a bare 'Isaiah 40:3' citation footnote with no trailing period before real text resumes).",
-    "en-bsb": "Berean Study Bible — public domain, but same inline-footnote issue, confirmed destructive on "
-        "Genesis 1:3 ('1:3 Cited in 2 Corinthians 4:6 and there was light.' — no terminator before real text).",
+    # en-web/en-webbe RESOLVED 2026-07-07: no longer sourced from the wldeh CDN
+    # (which has the footnote-splicing bug described below) -- now sourced from
+    # bible-api.com's parameterized data API instead, which returns genuinely
+    # clean, footnote-free text for these translations. See BIBLE_API_COM_VERSIONS.
+    "en-bsb": "Berean Study Bible — public domain, but same inline-footnote issue as the old wldeh en-web "
+        "problem, confirmed destructive on Genesis 1:3 ('1:3 Cited in 2 Corinthians 4:6 and there was light.' "
+        "— no terminator before real text). Not available on bible-api.com either, so still deferred; would "
+        "need its own clean source before enabling.",
     "en-engbrent / en-US-lxxup": "Brenton Septuagint family — public domain, but footnote splicing duplicates "
         "real words in some verses (Genesis 1:4), unsafe to auto-strip without a smarter parser.",
     "es-rv09": "Reina Valera 1909 (Spanish) — public domain, but cross-reference footnotes are glued to real "
@@ -101,7 +112,113 @@ _BOOK_SLUG_OVERRIDES = {
 VERSION_SCOPE = {
     "en-ojps": "Old Testament only",
     "en-oke":  "Torah only (Genesis–Deuteronomy)",
+    "en-ylt":  "New Testament only",
 }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Secondary source: bible-api.com's parameterized data API. Used ONLY for the
+# specific versions below, where the primary wldeh CDN mirror embeds inline
+# footnotes with no reliable terminator (confirmed destructive strip risk —
+# see DEFERRED_VERSIONS history). bible-api.com's /data/{translation}/{BOOK}/{n}
+# endpoint returns genuinely clean, footnote-free verse text for these same
+# public-domain translations, sourced from the open-bibles project.
+# Rate-limited to 15 req/30s per their terms — we cache full chapters
+# in-memory indefinitely (Bible text never changes) so repeat reads never
+# re-hit the network.
+# ══════════════════════════════════════════════════════════════════════════════
+BIBLE_API_COM_BASE = "https://bible-api.com/data"
+
+BIBLE_API_COM_VERSIONS = {"en-web", "en-webbe", "en-bbe", "en-darby", "en-ylt"}
+
+_BIBLE_API_COM_ID = {
+    "en-web": "web", "en-webbe": "webbe", "en-bbe": "bbe",
+    "en-darby": "darby", "en-ylt": "ylt",
+}
+
+# Standard 66-book Protestant canon -> bible-api.com 3-letter book IDs.
+_BOOK_ID_MAP = {
+    "genesis": "GEN", "exodus": "EXO", "leviticus": "LEV", "numbers": "NUM",
+    "deuteronomy": "DEU", "joshua": "JOS", "judges": "JDG", "ruth": "RUT",
+    "1samuel": "1SA", "2samuel": "2SA", "1kings": "1KI", "2kings": "2KI",
+    "1chronicles": "1CH", "2chronicles": "2CH", "ezra": "EZR", "nehemiah": "NEH",
+    "esther": "EST", "job": "JOB", "psalms": "PSA", "psalm": "PSA",
+    "proverbs": "PRO", "ecclesiastes": "ECC", "songofsolomon": "SNG",
+    "songofsongs": "SNG", "isaiah": "ISA", "jeremiah": "JER",
+    "lamentations": "LAM", "ezekiel": "EZK", "daniel": "DAN", "hosea": "HOS",
+    "joel": "JOL", "amos": "AMO", "obadiah": "OBA", "jonah": "JON",
+    "micah": "MIC", "nahum": "NAM", "habakkuk": "HAB", "zephaniah": "ZEP",
+    "haggai": "HAG", "zechariah": "ZEC", "malachi": "MAL",
+    "matthew": "MAT", "mark": "MRK", "luke": "LUK", "john": "JHN",
+    "acts": "ACT", "romans": "ROM", "1corinthians": "1CO", "2corinthians": "2CO",
+    "galatians": "GAL", "ephesians": "EPH", "philippians": "PHP",
+    "colossians": "COL", "1thessalonians": "1TH", "2thessalonians": "2TH",
+    "1timothy": "1TI", "2timothy": "2TI", "titus": "TIT", "philemon": "PHM",
+    "hebrews": "HEB", "james": "JAS", "1peter": "1PE", "2peter": "2PE",
+    "1john": "1JN", "2john": "2JN", "3john": "3JN", "jude": "JUD",
+    "revelation": "REV", "revelations": "REV",
+}
+
+_bible_api_com_chapter_cache: dict = {}
+
+
+async def _fetch_bible_api_com_chapter(version: str, book: str, chapter: int) -> dict:
+    slug = normalize_book(book, version)
+    book_id = _BOOK_ID_MAP.get(slug)
+    if not book_id:
+        raise BibleSourceError("invalid_book", f"Couldn't find the book '{book}'.")
+
+    cache_key = (version, book_id, chapter)
+    if cache_key in _bible_api_com_chapter_cache:
+        return _bible_api_com_chapter_cache[cache_key]
+
+    translation_id = _BIBLE_API_COM_ID[version]
+    url = f"{BIBLE_API_COM_BASE}/{translation_id}/{book_id}/{chapter}"
+    try:
+        async with httpx.AsyncClient(timeout=15) as h:
+            r = await h.get(url)
+    except Exception as e:
+        raise BibleSourceError("network_error", f"Could not reach the Bible text source: {e}")
+
+    if r.status_code == 404:
+        scope_note = VERSION_SCOPE.get(version)
+        extra = f" Note: {ALLOWED_VERSIONS.get(version, version)} only covers {scope_note}." if scope_note else ""
+        raise BibleSourceError("invalid_chapter", f"Couldn't find {book} {chapter}.{extra}")
+    if r.status_code == 429:
+        raise BibleSourceError("network_error", "Bible text source is temporarily rate-limited. Please try again in a moment.")
+    if r.status_code != 200:
+        raise BibleSourceError("network_error", f"Bible text source returned an unexpected error ({r.status_code}).")
+
+    payload = r.json()
+    verses = payload.get("verses", [])
+    if not verses:
+        scope_note = VERSION_SCOPE.get(version)
+        extra = f" Note: {ALLOWED_VERSIONS.get(version, version)} only covers {scope_note}." if scope_note else ""
+        raise BibleSourceError("invalid_chapter", f"Couldn't find {book} {chapter}.{extra}")
+
+    cleaned = [{"verse": v.get("verse"), "text": (v.get("text") or "").strip()} for v in verses]
+    full_text = "\n".join(f"{v['verse']}. {v['text']}" for v in cleaned)
+    result = {
+        "version": version, "book": book, "chapter": chapter,
+        "verses": cleaned, "full_text": full_text,
+        "reference": f"{book} {chapter}",
+    }
+    _bible_api_com_chapter_cache[cache_key] = result
+    return result
+
+
+async def _fetch_bible_api_com_verse(version: str, book: str, chapter: int, verse: int) -> dict:
+    chapter_data = await _fetch_bible_api_com_chapter(version, book, chapter)
+    match = next((v for v in chapter_data["verses"] if str(v["verse"]) == str(verse)), None)
+    if not match:
+        raise BibleSourceError(
+            "invalid_verse",
+            f"Couldn't find {book} {chapter}:{verse}. Check the book name, chapter, and verse number."
+        )
+    return {
+        "version": version, "book": book, "chapter": chapter, "verse": verse,
+        "text": match["text"], "reference": f"{book} {chapter}:{verse}",
+    }
 
 
 class BibleSourceError(Exception):
@@ -144,6 +261,8 @@ async def get_bible_versions() -> list:
 
 async def get_verse(version: str, book: str, chapter: int, verse: int) -> dict:
     _check_version(version)
+    if version in BIBLE_API_COM_VERSIONS:
+        return await _fetch_bible_api_com_verse(version, book, chapter, verse)
     slug = normalize_book(book, version)
     cdn_id = _cdn_version_id(version)
     url = f"{CDN_BASE}/{cdn_id}/books/{slug}/chapters/{chapter}/verses/{verse}.json"
@@ -174,6 +293,8 @@ async def get_verse(version: str, book: str, chapter: int, verse: int) -> dict:
 
 async def get_chapter(version: str, book: str, chapter: int) -> dict:
     _check_version(version)
+    if version in BIBLE_API_COM_VERSIONS:
+        return await _fetch_bible_api_com_chapter(version, book, chapter)
     slug = normalize_book(book, version)
     cdn_id = _cdn_version_id(version)
     url = f"{CDN_BASE}/{cdn_id}/books/{slug}/chapters/{chapter}.json"
@@ -230,9 +351,16 @@ DEFAULT_VERSION = "en-kjv"
 # Map them to our nearest real, public-domain equivalent rather than erroring —
 # these callers pass a version as a hint/label, not a hard requirement.
 _VERSION_ALIASES = {
+    # Still-copyrighted translations we don't have a license for — these map to
+    # our nearest real, public-domain equivalent rather than erroring. The
+    # DISPLAY label the user picked is preserved separately (see routers/bible.py);
+    # this alias only controls which real text is quoted.
     "niv": "en-kjv", "esv": "en-kjv", "nlt": "en-kjv", "nasb": "en-kjv",
     "msg": "en-kjv", "amp": "en-kjv", "tpt": "en-kjv", "csb": "en-kjv",
     "kjv": "en-kjv", "asv": "en-asv", "geneva": "en-gnv",
+    # Genuinely public domain — resolve to the REAL thing, not a KJV substitute.
+    "web": "en-web", "webbe": "en-webbe", "bbe": "en-bbe",
+    "darby": "en-darby", "ylt": "en-ylt",
 }
 
 _REF_RE = _re.compile(
