@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from openai import OpenAI
-import os, json, logging
+import os, json, logging, asyncio
 
 def _load_fallback_game_questions():
     _path = os.path.join(os.path.dirname(__file__), "..", "bible_game_fallback_questions.json")
@@ -284,7 +284,7 @@ Write ONLY the following section(s) of this sermon now, in full, fully-developed
 {continuity_note}
 
 Do not add a title/heading unless this is the first section. Do not summarize — write it exactly as it would be preached live. Use **bold markdown headers** for each named part (e.g. **SERMON POINT 1: Title**)."""
-        chunk = ai(chunk_prompt, max_tokens=chunk_max_tokens)
+        chunk = await asyncio.to_thread(ai, chunk_prompt, chunk_max_tokens)
         sermon_parts.append(chunk.strip())
         running_sermon = (running_sermon + "\n\n" + chunk).strip()
 
@@ -301,7 +301,7 @@ SERMON SO FAR:
 {content}
 
 Continue writing from exactly where it leaves off (do not repeat anything above). Add the CLOSING PRAYER if not already present, and otherwise deepen/expand the existing sections with more illustration, application, and pastoral depth — aim for roughly {remaining_words} more words."""
-        continuation = ai(continue_prompt, max_tokens=min(6000, int(remaining_words * 1.7)), temperature=0.7)
+        continuation = await asyncio.to_thread(lambda: ai(continue_prompt, max_tokens=min(6000, int(remaining_words * 1.7)), temperature=0.7))
         if continuation.strip():
             content = content.rstrip() + "\n\n" + continuation.strip()
 
@@ -328,7 +328,7 @@ Continue writing from exactly where it leaves off (do not repeat anything above)
 ---YOUTH_ADAPTATION---
 [A 3-4 sentence summary of how to adapt this sermon for a youth audience, plus 2 youth-specific discussion questions.]"""
 
-        extras_content = ai(extras_prompt, max_tokens=1800)
+        extras_content = await asyncio.to_thread(ai, extras_prompt, 1800)
 
         # Parse sections
         def extract_section(text, marker):
@@ -452,7 +452,7 @@ Include ALL of the following — fully written, not placeholders. Every section 
 
 Make it rich, detailed, and ready to use in a real church Bible study setting. Sections 5 and 6 are just as important as sections 1-4 — give them equal depth and effort."""
 
-    content = ai(prompt, max_tokens=max_out_tokens)
+    content = await asyncio.to_thread(ai, prompt, max_out_tokens)
     # Auto-save bible study to Supabase
     topic_text = req.topic or req.scripture or "Bible Study"
     saved_id = await save_bible_study(
@@ -517,7 +517,7 @@ Structure (write every section fully — no shortcuts):
 
 Write as if speaking directly to the reader. Be warm, personal, and pastoral."""
 
-    content = ai(prompt, max_tokens=2500)
+    content = await asyncio.to_thread(ai, prompt, 2500)
     _uid2 = _email_from_request(request, req.email or "")
     await save_generated_content(_uid2, f"Devotional: {req.scripture or req.topic or 'Daily Devotional'}", content, "devotional", topic=req.topic or "", scripture=req.scripture or "")
     log_usage(
