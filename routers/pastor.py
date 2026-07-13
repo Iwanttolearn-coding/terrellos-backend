@@ -1354,3 +1354,78 @@ async def bible_game_get(quiz_id: str, user_email: str = "anonymous"):
         raise
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Quiz not found: {e}")
+
+# ── STREAMING SERMON ENDPOINT ─────────────────────────────────────────────────
+# Uses Server-Sent Events so Fly.io proxy never times out waiting for a response
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+import openai as _openai
+
+@router.post("/sermon-stream")
+async def sermon_stream(req: SermonRequest, request: Request):
+    """
+    Streaming sermon endpoint — sends SSE chunks as content is generated.
+    Bypasses Fly.io's 60s proxy timeout by keeping the connection live.
+    Client reads via fetch() with ReadableStream.
+    """
+    await _require_access(request, req.email or "")
+
+    ref   = req.scripture or req.topic or "John 3:16"
+    denom = req.denomination or "Non-denominational evangelical"
+    audience = req.audience or "general congregation"
+    duration = req.duration or "30 minutes"
+    style    = req.style or req.sermonType or "expository"
+    language = getattr(req, "language", "en") or "en"
+
+    from bible_source import resolve_version, fetch_passage_text
+    bible_ver = resolve_version(req.bibleVersion)
+    real_passage = None
+    try:
+        real_passage = await fetch_passage_text(bible_ver, ref)
+    except Exception:
+        pass
+
+    lang_note = "Respond entirely in Spanish (Español)." if language == "es" else ""
+
+    system_prompt = PASTOR_SYSTEM
+    user_prompt = f"""{lang_note}
+Write a complete, fully preachable {duration} sermon on: {ref}
+Style: {style} | Denomination: {denom} | Audience: {audience}
+{f"Scripture text (quote exactly): {real_passage['reference']} — {real_passage['text']}" if real_passage else ""}
+
+Structure: Opening Hook → Scripture → Introduction → 3 Main Points (with sub-points, illustrations, applications) → Conclusion → Altar Call → Closing Prayer → Discussion Questions.
+
+Write EVERY section fully — no placeholders. This is a real sermon, not an outline."""
+
+    async def event_generator():
+        try:
+            oai_client = _openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
+            stream = await oai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                max_tokens=6000,
+                temperature=0.75,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    # SSE format: data: <text>\n\n
+                    safe = delta.replace("\n", "\\n")
+                    yield f"data: {safe}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: [ERROR] {str(e)}\n\n"
+
+    return _StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
