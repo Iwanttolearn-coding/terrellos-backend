@@ -1,3 +1,38 @@
 venv
 .env
 __pycache__
+
+# ── Security: secrets & credentials (auto-patched 2026-05-21) ────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.staging
+.env.test
+*.pem
+*.key
+*.p12
+*.pfx
+.secrets
+secrets.json
+credentials.json
+service-account*.json
+*_private_key*
+*_secret*
+# Cloudflare
+.wrangler/
+wrangler.toml.local
+# Fly.io
+fly.toml.local
+.fly/
+# Editor & OS
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+# Node
+node_modules/
+dist/
+build/
+.cache/
+*.log
