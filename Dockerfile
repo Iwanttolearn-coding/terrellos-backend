@@ -9,6 +9,10 @@ RUN python -m pip install --upgrade pip && \
 
 COPY . .
 
+# Belt and braces: .dockerignore already excludes .git, but a build that
+# somehow included it would bake a live GitHub credential into the image.
+RUN rm -rf /app/.git /app/.github
+
 # Validate imports before starting
 RUN python prestart.py
 

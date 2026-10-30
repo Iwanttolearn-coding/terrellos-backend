@@ -1,0 +1,16 @@
+# Never ship repository internals into the image: .git/config embeds a
+# credential in its remote URL and the build context needs none of it.
+.git
+.gitignore
+.github
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.env
+.env.*
+*.log
+*.sqlite3
+.DS_Store
