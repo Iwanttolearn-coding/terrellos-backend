@@ -43,6 +43,7 @@ from routers.transcribe    import router as transcribe_router
 from routers.legacy        import router as legacy_router
 from routers.legion        import router as legion_router
 from routers.music         import router as music_router
+from routers.games         import router as games_router
 
 # ── App identity registry ──────────────────────────────────────────────────────
 APP_REGISTRY = {
@@ -269,6 +270,7 @@ app.include_router(transcribe_router)
 app.include_router(legacy_router)
 app.include_router(legion_router)
 app.include_router(music_router)
+app.include_router(games_router)
 
 # ── Global env ────────────────────────────────────────────────────────────────
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
