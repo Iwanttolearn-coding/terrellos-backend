@@ -225,6 +225,21 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 # ── App identity middleware ────────────────────────────────────────────────────
+
+# ── API responses must never be cached by an intermediary ─────────────────────
+# The public site proxies /v1/* through Netlify's CDN, whose cache key is the
+# query string alone — it does not vary on Authorization. Without this, one
+# signed-in user can be served another user's cached history or progress, and a
+# guest's cached response overrides a signed-in request. no-store keeps per-user
+# data out of every shared cache.
+@app.middleware("http")
+async def _no_store_api_responses(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/v1"):
+        response.headers["Cache-Control"] = "no-store, private, max-age=0"
+        response.headers["Vary"] = "Authorization"
+    return response
+
 @app.middleware("http")
 async def app_identity_middleware(request: Request, call_next):
     app_id = (
