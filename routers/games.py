@@ -113,6 +113,11 @@ def _email(request: Request) -> str:
         return ""
 
 
+# Guests have no account to store a quiz against, so their last generated set is
+# shared in-process per level. Without this, every anonymous replay would spend
+# another AI generation.
+_GUEST_CACHE: Dict[tuple, tuple] = {}
+
 # ── Storage helpers (vault-backed, no schema changes) ────────────────────────
 async def _save_item(user_id: str, item_type: str, title: str, content: Any,
                      metadata: Optional[dict] = None) -> Optional[str]:
@@ -521,8 +526,15 @@ async def start_level(req: StartLevelRequest, request: Request):
                     used_fallback = bool(content.get("used_fallback"))
                     break
 
+    if not questions and not email:
+        cached_guest = _GUEST_CACHE.get((req.level, req.language or "en"))
+        if cached_guest and not req.regenerate:
+            questions, used_fallback = cached_guest
+
     if not questions:
         questions, used_fallback = await _generate_questions(level_def, req.language or "en")
+        if not email and questions:
+            _GUEST_CACHE[(req.level, req.language or "en")] = (questions, used_fallback)
         if not questions:
             raise HTTPException(status_code=502, detail="Could not prepare questions for this level. Please try again.")
         if email:
