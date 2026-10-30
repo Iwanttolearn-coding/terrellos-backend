@@ -340,10 +340,29 @@ async def get_verse(version: str, book: str, chapter: int, verse: int) -> dict:
     }
 
 
+def _dedupe_verses(verses):
+    """The wldeh CDN returns each verse twice for some chapters (e.g. John 3 has
+    72 entries for 36 verses). Keep the first occurrence of every verse number so
+    the reader and the parallel view don't print the text twice."""
+    seen, out = set(), []
+    for v in verses:
+        key = str(v.get("verse"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(v)
+    return out
+
+
 async def get_chapter(version: str, book: str, chapter: int) -> dict:
     _check_version(version)
     if version in BIBLE_API_COM_VERSIONS:
-        return await _fetch_bible_api_com_chapter(version, book, chapter)
+        result = await _fetch_bible_api_com_chapter(version, book, chapter)
+        deduped = _dedupe_verses(result.get("verses", []))
+        if len(deduped) != len(result.get("verses", [])):
+            result["verses"] = deduped
+            result["full_text"] = "\n".join(f"{v['verse']}. {v['text']}" for v in deduped)
+        return result
     slug = _cdn_book_path(book, version)
     cdn_id = _cdn_version_id(version)
     url = f"{CDN_BASE}/{cdn_id}/books/{slug}/chapters/{chapter}.json"
@@ -372,7 +391,7 @@ async def get_chapter(version: str, book: str, chapter: int) -> dict:
         raise BibleSourceError("network_error", f"Bible text source returned an unexpected error ({r.status_code}).")
 
     payload = r.json()
-    verses = payload.get("data", [])
+    verses = _dedupe_verses(payload.get("data", []))
     cleaned = [{"verse": v.get("verse"), "text": clean_verse_text(v.get("text", ""))} for v in verses]
     full_text = "\n".join(f"{v['verse']}. {v['text']}" for v in cleaned)
     return {
