@@ -197,8 +197,12 @@ async def check_and_increment_usage(user_email: str) -> None:
                     "apikey": SUPABASE_KEY,
                     "Authorization": f"Bearer {SUPABASE_KEY}",
                     "Content-Type": "application/json",
-                    "Prefer": "resolution=merge-duplicates",
+                    "Prefer": "resolution=merge-duplicates,return=representation",
                 },
+                # Without on_conflict PostgREST merges on the primary key only, so the
+                # second generation in a period hit the (user_email, period) unique
+                # constraint and returned 409, silently freezing the counter at 1.
+                params={"on_conflict": "user_email,period"},
                 json={"user_email": email_norm, "period": period, "count": current + 1},
             )
     except HTTPException:
