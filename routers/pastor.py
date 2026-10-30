@@ -668,6 +668,17 @@ async def discipleship(request: Request):
     custom_topic = body.get("custom_topic", "").strip()
     email       = body.get("email", "")
     app_id      = body.get("app_id", "pastor-ai-connect")
+    output_language = (body.get("output_language") or "").strip().lower()
+
+    lang_note = ""
+    if output_language == "es":
+        lang_note = ("OUTPUT LANGUAGE: Write the ENTIRE lesson in Spanish (Español). "
+                     "Translate every heading, section title, teaching point, question, "
+                     "and instruction. Scripture quotations must also be in Spanish.")
+    elif output_language == "bilingual":
+        lang_note = ("OUTPUT LANGUAGE: Write every section twice — the full English text first, "
+                     "then a complete Spanish translation of that same section, labelled "
+                     "'English' and 'Español'.")
 
     # Build denomination/audience context
     denom_context = ""
@@ -700,6 +711,7 @@ WEEK: {week} of {total_weeks}
 OBJECTIVE: {objective}
 {f'CUSTOM FOCUS: {custom_topic}' if custom_topic else ''}
 DENOMINATION CONTEXT: {denom_context}
+{lang_note}
 
 Generate a COMPLETE, READY-TO-USE Week {week} discipleship class lesson. This must be fully self-contained — the pastor should be able to print this out and teach it immediately without adding anything.
 

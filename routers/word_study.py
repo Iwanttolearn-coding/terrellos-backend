@@ -46,6 +46,7 @@ class WordStudyRequest(BaseModel):
     language: Optional[str] = "auto"      # hebrew | greek | aramaic | auto
     testament: Optional[str] = "auto"     # old | new | auto
     depth: Optional[str] = "standard"     # quick | standard | deep
+    output_language: Optional[str] = ""   # "" | en | es | bilingual (response language)
     email: Optional[str] = ""
 
 
@@ -54,6 +55,7 @@ class PassageWordStudyRequest(BaseModel):
     version: Optional[str] = "en-kjv"      # any label accepted; resolved to a real public-domain version server-side
     depth: Optional[str] = "standard"
     focus_words: Optional[int] = 5        # how many key words to study
+    output_language: Optional[str] = ""   # "" | en | es | bilingual (response language)
     email: Optional[str] = ""
 
 
@@ -69,6 +71,19 @@ def ai(prompt: str, max_tokens: int = 3000) -> str:
         )
     except Exception as e:
         raise HTTPException(503, f"AI generation unavailable: {e}")
+
+
+def _output_lang_note(code: Optional[str]) -> str:
+    """Response-language instruction. Distinct from req.language, which names the
+    original biblical language (hebrew/greek/aramaic/auto)."""
+    code = (code or "").strip().lower()
+    if code == "es":
+        return ("\n\nOUTPUT LANGUAGE: Write the entire study in Spanish (Español), "
+                "including every heading, table, label, and explanation.")
+    if code == "bilingual":
+        return ("\n\nOUTPUT LANGUAGE: Present every section in English followed by a "
+                "complete Spanish translation, labelled 'English' and 'Español'.")
+    return ""
 
 
 def build_word_study_prompt(req: WordStudyRequest) -> str:
@@ -127,7 +142,7 @@ Structure your response with these clear sections:
 
 ## 🔗 Related Words
 [2–3 related biblical words worth studying alongside this one, with brief descriptions]
-"""
+""" + _output_lang_note(req.output_language)
 
 
 def build_passage_prompt(req: PassageWordStudyRequest, real_passage: Optional[dict] = None) -> str:
@@ -154,7 +169,7 @@ After all word studies, add:
 
 ## 🔍 Passage Summary: How the Original Languages Deepen {req.passage}
 [3–4 paragraphs explaining how these original language insights change or enrich our understanding of the full passage]
-"""
+""" + _output_lang_note(req.output_language)
 
 
 @router.post("/analyze")
